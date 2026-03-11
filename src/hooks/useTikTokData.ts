@@ -1,122 +1,214 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useInfiniteQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import type {
-  TikTokPostRow,
   TikTokCommentRow,
-  PostItem,
-  CommentItem,
   PlatformStats,
+  EnrichedComment,
+  ChartPoint,
+  TopPost,
+  AccountCount,
 } from "@/lib/db-types";
-import { daysAgo } from "@/lib/db-types";
 
-const PAGE_SIZE = 100;
-
-export function useTikTokPosts(options: {
+interface QueryOpts {
   account?: string;
-  days?: number;
-  page?: number;
-}) {
-  const { account, days = 30, page = 0 } = options;
+  dateFrom?: string;
+  dateTo?: string;
+}
 
-  return useQuery({
-    queryKey: ["tiktok-posts", account, days, page],
+/* ── Stats (RPC) ── */
+export function useTikTokStats(opts: QueryOpts) {
+  const { account, dateFrom, dateTo } = opts;
+  return useQuery<PlatformStats>({
+    queryKey: ["tiktok-stats", account, dateFrom, dateTo],
     queryFn: async () => {
-      let query = (supabase as any)
-        .from("tiktok_posts")
-        .select("*", { count: "exact" })
-        .order("post_create_time", { ascending: false })
-        .gte("post_create_time", daysAgo(days))
-        .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
-
-      if (account) query = query.eq("account_username", account);
-
-      const { data, error, count } = await query;
+      const { data, error } = await (supabase as any).rpc("get_tiktok_stats", {
+        p_account: account || null,
+        p_date_from: dateFrom || null,
+        p_date_to: dateTo || null,
+      });
       if (error) throw error;
+      return data as PlatformStats;
+    },
+    staleTime: 5 * 60_000,
+  });
+}
 
-      const posts: PostItem[] = ((data || []) as TikTokPostRow[]).map((p) => ({
-        id: p.post_id,
-        text: p.post_description || "",
-        url: p.post_url || "",
-        createdAt: p.post_create_time || "",
-        likes: p.post_like_count || 0,
-        commentsCount: p.post_comment_count || 0,
-        shares: p.post_share_count || 0,
-        views: p.post_play_count || 0,
-        accountUsername: p.account_username || "",
-        accountNameAr: p.account_name_ar || "",
+/* ── Comments (paginated, infinite) ── */
+export type CommentSort = "newest" | "oldest" | "most_likes" | "most_replies";
+
+interface CommentOpts extends QueryOpts {
+  search?: string;
+  sort?: CommentSort;
+  filterDate?: string;
+  filterPostId?: string;
+  enabled?: boolean;
+}
+
+function sortConfig(sort: CommentSort) {
+  const map: Record<CommentSort, { col: string; asc: boolean }> = {
+    newest: { col: "comment_create_time_iso", asc: false },
+    oldest: { col: "comment_create_time_iso", asc: true },
+    most_likes: { col: "comment_digg_count", asc: false },
+    most_replies: { col: "comment_reply_total", asc: false },
+  };
+  return map[sort];
+}
+
+export function useTikTokComments(opts: CommentOpts) {
+  const {
+    account, dateFrom, dateTo, search,
+    sort = "newest", filterDate, filterPostId,
+    enabled = true,
+  } = opts;
+
+  return useInfiniteQuery({
+    queryKey: ["tiktok-comments", account, dateFrom, dateTo, search, sort, filterDate, filterPostId],
+    enabled,
+    initialPageParam: 0,
+    queryFn: async ({ pageParam = 0 }) => {
+      const { col, asc } = sortConfig(sort);
+      const from = pageParam * 100;
+      const to = from + 99;
+
+      let q = (supabase as any)
+        .from("tiktok_comments")
+        .select("*", { count: "exact" })
+        .order(col, { ascending: asc })
+        .range(from, to);
+
+      if (account) q = q.eq("account_username", account);
+      if (dateFrom) q = q.gte("comment_create_time_iso", dateFrom);
+      if (dateTo) q = q.lte("comment_create_time_iso", dateTo);
+      if (search) q = q.ilike("comment_text", `%${search}%`);
+      if (filterDate) {
+        q = q.gte("comment_create_time_iso", filterDate + "T00:00:00");
+        q = q.lt("comment_create_time_iso", filterDate + "T23:59:59.999");
+      }
+      if (filterPostId) q = q.eq("post_id", filterPostId);
+
+      const { data: comments, count, error } = await q;
+      if (error) throw error;
+      const rows = (comments || []) as TikTokCommentRow[];
+
+      // Batch-fetch parent post info
+      const postIds = [...new Set(rows.map((c) => c.post_id).filter(Boolean))] as string[];
+      const postMap = new Map<string, { text: string; url: string }>();
+      if (postIds.length > 0) {
+        const { data: posts } = await (supabase as any)
+          .from("tiktok_posts")
+          .select("post_id, post_description, post_url")
+          .in("post_id", postIds);
+        for (const p of posts || []) {
+          postMap.set(p.post_id, { text: p.post_description || "", url: p.post_url || "" });
+        }
+      }
+
+      const items: EnrichedComment[] = rows.map((c) => ({
+        id: c.comment_cid,
+        text: c.comment_text || "",
+        createdAt: c.comment_create_time_iso || "",
+        likes: c.comment_digg_count || 0,
+        authorName: c.comment_unique_id || "مجهول",
+        authorAvatar: c.comment_avatar_thumbnail || undefined,
+        isReply: !!c.replies_to_id,
+        replyCount: c.comment_reply_total || 0,
+        parentPostId: c.post_id || undefined,
+        parentPostText: postMap.get(c.post_id || "")?.text,
+        parentPostUrl: postMap.get(c.post_id || "")?.url,
         platform: "tiktok" as const,
       }));
 
-      return { posts, total: count || 0 };
+      return { items, total: count || 0, page: pageParam };
     },
+    getNextPageParam: (last) =>
+      (last.page + 1) * 100 < last.total ? last.page + 1 : undefined,
+    staleTime: 60_000,
   });
 }
 
-export function useTikTokComments(postId?: string) {
-  return useQuery({
-    queryKey: ["tiktok-comments", postId],
-    enabled: !!postId,
+/* ── Comments Per Day (RPC) ── */
+export function useTikTokCommentsPerDay(opts: QueryOpts) {
+  const { account, dateFrom, dateTo } = opts;
+  return useQuery<ChartPoint[]>({
+    queryKey: ["tiktok-comments-per-day", account, dateFrom, dateTo],
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from("tiktok_comments")
-        .select("*")
-        .eq("post_id", postId)
-        .order("comment_create_time_iso", { ascending: false })
-        .limit(100);
-
+      const { data, error } = await (supabase as any).rpc("get_tiktok_comments_per_day", {
+        p_account: account || null,
+        p_date_from: dateFrom || null,
+        p_date_to: dateTo || null,
+      });
       if (error) throw error;
-
-      return ((data || []) as TikTokCommentRow[]).map(
-        (c): CommentItem => ({
-          id: c.comment_cid,
-          text: c.comment_text || "",
-          createdAt: c.comment_create_time_iso || "",
-          likes: c.comment_digg_count || 0,
-          authorName: c.comment_unique_id || "مجهول",
-          isReply: !!c.replies_to_id,
-          replyCount: c.comment_reply_total || 0,
-        })
-      );
+      return (data || []) as ChartPoint[];
     },
+    staleTime: 5 * 60_000,
   });
 }
 
-export function useTikTokStats(options: {
-  account?: string;
-  days?: number;
-}) {
-  const { account, days = 30 } = options;
-
-  return useQuery({
-    queryKey: ["tiktok-stats", account, days],
+/* ── Top Posts (RPC) ── */
+export function useTikTokTopPosts(opts: QueryOpts & { limit?: number }) {
+  const { account, dateFrom, dateTo, limit = 10 } = opts;
+  return useQuery<TopPost[]>({
+    queryKey: ["tiktok-top-posts", account, dateFrom, dateTo, limit],
     queryFn: async () => {
-      let query = (supabase as any)
-        .from("tiktok_posts")
-        .select(
-          "post_like_count, post_comment_count, post_share_count, post_play_count"
-        )
-        .gte("post_create_time", daysAgo(days))
-        .limit(10000);
-
-      if (account) query = query.eq("account_username", account);
-
-      const { data, error } = await query;
+      const { data, error } = await (supabase as any).rpc("get_tiktok_top_posts", {
+        p_account: account || null,
+        p_date_from: dateFrom || null,
+        p_date_to: dateTo || null,
+        p_limit: limit,
+      });
       if (error) throw error;
-
-      const rows = (data || []) as TikTokPostRow[];
-      return {
-        totalPosts: rows.length,
-        totalLikes: rows.reduce((s, p) => s + (p.post_like_count || 0), 0),
-        totalComments: rows.reduce(
-          (s, p) => s + (p.post_comment_count || 0),
-          0
-        ),
-        totalShares: rows.reduce(
-          (s, p) => s + (p.post_share_count || 0),
-          0
-        ),
-        totalViews: rows.reduce((s, p) => s + (p.post_play_count || 0), 0),
-      } as PlatformStats;
+      return ((data || []) as any[]).map((p) => ({
+        id: p.post_id,
+        text: p.post_description || "",
+        url: p.post_url || "",
+        engagement: p.engagement || 0,
+        likes: p.post_like_count || 0,
+        comments: p.post_comment_count || 0,
+        views: p.post_play_count || 0,
+        account: p.account_username || "",
+        accountAr: p.account_name_ar || "",
+        platform: "tiktok" as const,
+      }));
     },
+    staleTime: 5 * 60_000,
+  });
+}
+
+/* ── Posts Per Day (RPC) ── */
+export function useTikTokPostsPerDay(opts: QueryOpts) {
+  const { account, dateFrom, dateTo } = opts;
+  return useQuery<ChartPoint[]>({
+    queryKey: ["tiktok-posts-per-day", account, dateFrom, dateTo],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).rpc("get_tiktok_posts_per_day", {
+        p_account: account || null,
+        p_date_from: dateFrom || null,
+        p_date_to: dateTo || null,
+      });
+      if (error) throw error;
+      return (data || []) as ChartPoint[];
+    },
+    staleTime: 5 * 60_000,
+  });
+}
+
+/* ── Comments Per Account (RPC) ── */
+export function useTikTokCommentsPerAccount(opts: { dateFrom?: string; dateTo?: string }) {
+  const { dateFrom, dateTo } = opts;
+  return useQuery<AccountCount[]>({
+    queryKey: ["tiktok-comments-per-account", dateFrom, dateTo],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).rpc("get_tiktok_comments_per_account", {
+        p_date_from: dateFrom || null,
+        p_date_to: dateTo || null,
+      });
+      if (error) throw error;
+      return ((data || []) as any[]).map((r) => ({
+        account: r.account_username || "",
+        accountAr: r.account_name_ar || "",
+        count: r.count || 0,
+      }));
+    },
+    staleTime: 5 * 60_000,
   });
 }

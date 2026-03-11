@@ -29,6 +29,8 @@ export interface TikTokCommentRow {
   comment_reply_total: number | null;
   replies_to_id: string | null;
   comment_unique_id: string | null;
+  comment_uid: string | null;
+  comment_avatar_thumbnail: string | null;
   account_username: string | null;
   account_name_ar: string | null;
 }
@@ -47,6 +49,7 @@ export interface InstagramPostRow {
   post_likes_count: number | null;
   post_views_count: number | null;
   post_type: string | null;
+  post_image_url: string | null;
   account_username: string | null;
   account_name_ar: string | null;
   is_collaboration: boolean | null;
@@ -61,6 +64,7 @@ export interface InstagramCommentRow {
   comment_likes: number | null;
   comment_owner_username: string | null;
   comment_owner_is_verified: boolean | null;
+  comment_owner_profile_pic: string | null;
   account_username: string | null;
   account_name_ar: string | null;
 }
@@ -72,7 +76,9 @@ export interface InstagramCommentRow {
 export interface YouTubeDataRow {
   video_id: string | null;
   video_title: string | null;
+  video_description: string | null;
   video_url: string | null;
+  video_thumbnail_url: string | null;
   video_view_count: number | null;
   video_like_count: number | null;
   video_comment_count: number | null;
@@ -81,34 +87,10 @@ export interface YouTubeDataRow {
   comment_published_at: string | null;
   comment_like_count: number | null;
   author_display_name: string | null;
+  author_thumbnail_url: string | null;
   account_name: string | null;
   comment_type: string | null;
   parent_comment_id: string | null;
-}
-
-/* ═══════════════════════════════════════════════════
-   X / Twitter (from Meltwater)
-   ═══════════════════════════════════════════════════ */
-
-export interface XDataRow {
-  document_id: string;
-  hit_sentence: string | null;
-  sentiment: string | null;
-  author_name: string | null;
-  author_handle: string | null;
-  date: string | null;
-  time: string | null;
-  engagement: number | null;
-  likes: number | null;
-  replies: number | null;
-  reposts: number | null;
-  comments: number | null;
-  views: number | null;
-  reach: number | null;
-  source_name: string | null;
-  url: string | null;
-  hashtags: string | null;
-  language: string | null;
 }
 
 /* ═══════════════════════════════════════════════════
@@ -117,42 +99,58 @@ export interface XDataRow {
 
 export type Platform = "tiktok" | "instagram" | "youtube" | "x";
 
-export interface PostItem {
-  id: string;
-  text: string;
-  url: string;
-  createdAt: string;
-  likes: number;
-  commentsCount: number;
-  shares: number;
-  views: number;
-  accountUsername: string;
-  accountNameAr: string;
-  platform: Platform;
-  sentiment?: string;
-  authorName?: string;
-  authorHandle?: string;
-  extra?: Record<string, unknown>;
+export interface PlatformStats {
+  total_posts: number;
+  total_likes: number;
+  total_comments: number;
+  total_shares: number;
+  total_views: number;
 }
 
-export interface CommentItem {
+export interface EnrichedComment {
   id: string;
   text: string;
   createdAt: string;
   likes: number;
   authorName: string;
+  authorAvatar?: string;
   isVerified?: boolean;
   isReply: boolean;
-  replyCount?: number;
+  replyCount: number;
+  parentPostId?: string;
+  parentPostText?: string;
+  parentPostUrl?: string;
+  platform: Platform;
 }
 
-export interface PlatformStats {
-  totalPosts: number;
-  totalComments: number;
-  totalLikes: number;
-  totalViews: number;
-  totalShares: number;
+export interface ChartPoint {
+  date: string;
+  count: number;
 }
+
+export interface TopPost {
+  id: string;
+  text: string;
+  url: string;
+  engagement: number;
+  likes: number;
+  comments: number;
+  views: number;
+  account: string;
+  accountAr: string;
+  platform: Platform;
+}
+
+export interface AccountCount {
+  account: string;
+  accountAr: string;
+  count: number;
+}
+
+export type DrawerFilter =
+  | { type: "date"; date: string; label: string }
+  | { type: "post"; postId: string; label: string }
+  | { type: "account"; account: string; label: string };
 
 export interface AccountOption {
   username: string;
@@ -163,22 +161,14 @@ export interface AccountOption {
    Helpers
    ═══════════════════════════════════════════════════ */
 
-export function daysAgo(days: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() - days);
-  return d.toISOString();
-}
-
-export function daysAgoDate(days: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() - days);
-  return d.toISOString().split("T")[0];
-}
-
 export function fmtNum(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-  return n.toString();
+  return n.toLocaleString("ar-SA");
+}
+
+export function fmtNumEn(n: number): string {
+  return n.toLocaleString("en-US");
 }
 
 /* ═══════════════════════════════════════════════════
@@ -208,3 +198,17 @@ export const YOUTUBE_ACCOUNTS: AccountOption[] = [
   { username: "ThmanyahLiving", nameAr: "معيشة ثمانية" },
   { username: "RadioThmanyah", nameAr: "راديو ثمانية" },
 ];
+
+export const PLATFORM_COLORS: Record<Platform, string> = {
+  tiktok: "#ff0050",
+  instagram: "#E4405F",
+  youtube: "#FF0000",
+  x: "#1DA1F2",
+};
+
+export const PLATFORM_LABELS: Record<Platform, string> = {
+  tiktok: "TikTok",
+  instagram: "Instagram",
+  youtube: "YouTube",
+  x: "X",
+};

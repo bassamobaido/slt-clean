@@ -1,134 +1,215 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useInfiniteQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import type {
-  InstagramPostRow,
   InstagramCommentRow,
-  PostItem,
-  CommentItem,
   PlatformStats,
+  EnrichedComment,
+  ChartPoint,
+  TopPost,
+  AccountCount,
 } from "@/lib/db-types";
-import { daysAgo } from "@/lib/db-types";
 
-const PAGE_SIZE = 100;
-
-export function useInstagramPosts(options: {
+interface QueryOpts {
   account?: string;
-  days?: number;
-  page?: number;
-}) {
-  const { account, days = 30, page = 0 } = options;
+  dateFrom?: string;
+  dateTo?: string;
+}
 
-  return useQuery({
-    queryKey: ["instagram-posts", account, days, page],
+/* ── Stats (RPC) ── */
+export function useInstagramStats(opts: QueryOpts) {
+  const { account, dateFrom, dateTo } = opts;
+  return useQuery<PlatformStats>({
+    queryKey: ["instagram-stats", account, dateFrom, dateTo],
     queryFn: async () => {
-      let query = (supabase as any)
-        .from("instagram_posts")
-        .select("*", { count: "exact" })
-        .order("post_timestamp", { ascending: false })
-        .gte("post_timestamp", daysAgo(days))
-        .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
-
-      if (account) query = query.eq("account_username", account);
-
-      const { data, error, count } = await query;
+      const { data, error } = await (supabase as any).rpc("get_instagram_stats", {
+        p_account: account || null,
+        p_date_from: dateFrom || null,
+        p_date_to: dateTo || null,
+      });
       if (error) throw error;
-
-      const posts: PostItem[] = ((data || []) as InstagramPostRow[]).map(
-        (p) => ({
-          id: p.post_id,
-          text: p.post_caption || "",
-          url: p.post_url || "",
-          createdAt: p.post_timestamp || "",
-          likes: p.post_likes_count || 0,
-          commentsCount: p.post_comments_count || 0,
-          shares: 0,
-          views: p.post_views_count || 0,
-          accountUsername: p.account_username || "",
-          accountNameAr: p.account_name_ar || "",
-          platform: "instagram" as const,
-          extra: {
-            postType: p.post_type,
-            shortcode: p.post_shortcode,
-            isCollaboration: p.is_collaboration,
-            collaborationAccounts: p.collaboration_accounts,
-          },
-        })
-      );
-
-      return { posts, total: count || 0 };
+      return data as PlatformStats;
     },
+    staleTime: 5 * 60_000,
   });
 }
 
-export function useInstagramComments(postId?: string) {
-  return useQuery({
-    queryKey: ["instagram-comments", postId],
-    enabled: !!postId,
-    queryFn: async () => {
-      const { data, error } = await (supabase as any)
+/* ── Comments (paginated, infinite) ── */
+export type CommentSort = "newest" | "oldest" | "most_likes" | "most_replies";
+
+interface CommentOpts extends QueryOpts {
+  search?: string;
+  sort?: CommentSort;
+  filterDate?: string;
+  filterPostId?: string;
+  enabled?: boolean;
+}
+
+function sortConfig(sort: CommentSort) {
+  const map: Record<CommentSort, { col: string; asc: boolean }> = {
+    newest: { col: "comment_timestamp", asc: false },
+    oldest: { col: "comment_timestamp", asc: true },
+    most_likes: { col: "comment_likes", asc: false },
+    most_replies: { col: "comment_timestamp", asc: false }, // IG has no reply count
+  };
+  return map[sort];
+}
+
+export function useInstagramComments(opts: CommentOpts) {
+  const {
+    account, dateFrom, dateTo, search,
+    sort = "newest", filterDate, filterPostId,
+    enabled = true,
+  } = opts;
+
+  return useInfiniteQuery({
+    queryKey: ["instagram-comments", account, dateFrom, dateTo, search, sort, filterDate, filterPostId],
+    enabled,
+    initialPageParam: 0,
+    queryFn: async ({ pageParam = 0 }) => {
+      const { col, asc } = sortConfig(sort);
+      const from = pageParam * 100;
+      const to = from + 99;
+
+      let q = (supabase as any)
         .from("instagram_comments")
-        .select("*")
-        .eq("post_id", postId)
-        .order("comment_timestamp", { ascending: false })
-        .limit(100);
+        .select("*", { count: "exact" })
+        .order(col, { ascending: asc })
+        .range(from, to);
 
+      if (account) q = q.eq("account_username", account);
+      if (dateFrom) q = q.gte("comment_timestamp", dateFrom);
+      if (dateTo) q = q.lte("comment_timestamp", dateTo);
+      if (search) q = q.ilike("comment_text", `%${search}%`);
+      if (filterDate) {
+        q = q.gte("comment_timestamp", filterDate + "T00:00:00");
+        q = q.lt("comment_timestamp", filterDate + "T23:59:59.999");
+      }
+      if (filterPostId) q = q.eq("post_id", filterPostId);
+
+      const { data: comments, count, error } = await q;
       if (error) throw error;
+      const rows = (comments || []) as InstagramCommentRow[];
 
-      return ((data || []) as InstagramCommentRow[]).map(
-        (c): CommentItem => ({
-          id: c.comment_id,
-          text: c.comment_text || "",
-          createdAt: c.comment_timestamp || "",
-          likes: c.comment_likes || 0,
-          authorName: c.comment_owner_username || "مجهول",
-          isVerified: c.comment_owner_is_verified || false,
-          isReply: false,
-          replyCount: 0,
-        })
-      );
+      // Batch-fetch parent post info
+      const postIds = [...new Set(rows.map((c) => c.post_id).filter(Boolean))] as string[];
+      const postMap = new Map<string, { text: string; url: string }>();
+      if (postIds.length > 0) {
+        const { data: posts } = await (supabase as any)
+          .from("instagram_posts")
+          .select("post_id, post_caption, post_url")
+          .in("post_id", postIds);
+        for (const p of posts || []) {
+          postMap.set(p.post_id, { text: p.post_caption || "", url: p.post_url || "" });
+        }
+      }
+
+      const items: EnrichedComment[] = rows.map((c) => ({
+        id: c.comment_id,
+        text: c.comment_text || "",
+        createdAt: c.comment_timestamp || "",
+        likes: c.comment_likes || 0,
+        authorName: c.comment_owner_username || "مجهول",
+        authorAvatar: c.comment_owner_profile_pic || undefined,
+        isVerified: c.comment_owner_is_verified || false,
+        isReply: false,
+        replyCount: 0,
+        parentPostId: c.post_id || undefined,
+        parentPostText: postMap.get(c.post_id || "")?.text,
+        parentPostUrl: postMap.get(c.post_id || "")?.url,
+        platform: "instagram" as const,
+      }));
+
+      return { items, total: count || 0, page: pageParam };
     },
+    getNextPageParam: (last) =>
+      (last.page + 1) * 100 < last.total ? last.page + 1 : undefined,
+    staleTime: 60_000,
   });
 }
 
-export function useInstagramStats(options: {
-  account?: string;
-  days?: number;
-}) {
-  const { account, days = 30 } = options;
-
-  return useQuery({
-    queryKey: ["instagram-stats", account, days],
+/* ── Comments Per Day (RPC) ── */
+export function useInstagramCommentsPerDay(opts: QueryOpts) {
+  const { account, dateFrom, dateTo } = opts;
+  return useQuery<ChartPoint[]>({
+    queryKey: ["instagram-comments-per-day", account, dateFrom, dateTo],
     queryFn: async () => {
-      let query = (supabase as any)
-        .from("instagram_posts")
-        .select(
-          "post_likes_count, post_comments_count, post_views_count"
-        )
-        .gte("post_timestamp", daysAgo(days))
-        .limit(10000);
-
-      if (account) query = query.eq("account_username", account);
-
-      const { data, error } = await query;
+      const { data, error } = await (supabase as any).rpc("get_instagram_comments_per_day", {
+        p_account: account || null,
+        p_date_from: dateFrom || null,
+        p_date_to: dateTo || null,
+      });
       if (error) throw error;
-
-      const rows = (data || []) as InstagramPostRow[];
-      return {
-        totalPosts: rows.length,
-        totalLikes: rows.reduce(
-          (s, p) => s + (p.post_likes_count || 0),
-          0
-        ),
-        totalComments: rows.reduce(
-          (s, p) => s + (p.post_comments_count || 0),
-          0
-        ),
-        totalShares: 0,
-        totalViews: rows.reduce(
-          (s, p) => s + (p.post_views_count || 0),
-          0
-        ),
-      } as PlatformStats;
+      return (data || []) as ChartPoint[];
     },
+    staleTime: 5 * 60_000,
+  });
+}
+
+/* ── Top Posts (RPC) ── */
+export function useInstagramTopPosts(opts: QueryOpts & { limit?: number }) {
+  const { account, dateFrom, dateTo, limit = 10 } = opts;
+  return useQuery<TopPost[]>({
+    queryKey: ["instagram-top-posts", account, dateFrom, dateTo, limit],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).rpc("get_instagram_top_posts", {
+        p_account: account || null,
+        p_date_from: dateFrom || null,
+        p_date_to: dateTo || null,
+        p_limit: limit,
+      });
+      if (error) throw error;
+      return ((data || []) as any[]).map((p) => ({
+        id: p.post_id,
+        text: p.post_caption || "",
+        url: p.post_url || "",
+        engagement: p.engagement || 0,
+        likes: p.post_likes_count || 0,
+        comments: p.post_comments_count || 0,
+        views: p.post_views_count || 0,
+        account: p.account_username || "",
+        accountAr: p.account_name_ar || "",
+        platform: "instagram" as const,
+      }));
+    },
+    staleTime: 5 * 60_000,
+  });
+}
+
+/* ── Posts Per Day (RPC) ── */
+export function useInstagramPostsPerDay(opts: QueryOpts) {
+  const { account, dateFrom, dateTo } = opts;
+  return useQuery<ChartPoint[]>({
+    queryKey: ["instagram-posts-per-day", account, dateFrom, dateTo],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).rpc("get_instagram_posts_per_day", {
+        p_account: account || null,
+        p_date_from: dateFrom || null,
+        p_date_to: dateTo || null,
+      });
+      if (error) throw error;
+      return (data || []) as ChartPoint[];
+    },
+    staleTime: 5 * 60_000,
+  });
+}
+
+/* ── Comments Per Account (RPC) ── */
+export function useInstagramCommentsPerAccount(opts: { dateFrom?: string; dateTo?: string }) {
+  const { dateFrom, dateTo } = opts;
+  return useQuery<AccountCount[]>({
+    queryKey: ["instagram-comments-per-account", dateFrom, dateTo],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).rpc("get_instagram_comments_per_account", {
+        p_date_from: dateFrom || null,
+        p_date_to: dateTo || null,
+      });
+      if (error) throw error;
+      return ((data || []) as any[]).map((r) => ({
+        account: r.account_username || "",
+        accountAr: r.account_name_ar || "",
+        count: r.count || 0,
+      }));
+    },
+    staleTime: 5 * 60_000,
   });
 }

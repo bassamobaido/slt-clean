@@ -7,16 +7,13 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import AppLayout from "@/components/layout/AppLayout";
 import SplashIntro from "@/components/SplashIntro";
 import Onboarding from "@/components/Onboarding";
-import Dashboard from "./pages/Dashboard";
-import Index from "./pages/Index";
-import History from "./pages/History";
+import Home from "./pages/Home";
+import Overview from "./pages/explore/Overview";
+import TikTokPage from "./pages/explore/TikTokPage";
+import InstagramPage from "./pages/explore/InstagramPage";
+import YouTubePage from "./pages/explore/YouTubePage";
+import XPage from "./pages/explore/XPage";
 import MeltwaterReport from "./pages/MeltwaterReport";
-import XMonitoring from "./pages/monitoring/XMonitoring";
-import TikTokMonitoring from "./pages/monitoring/TikTokMonitoring";
-import InstagramMonitoring from "./pages/monitoring/InstagramMonitoring";
-import YouTubeMonitoring from "./pages/monitoring/YouTubeMonitoring";
-import DataAnalysis from "./pages/DataAnalysis";
-import Explore from "./pages/Explore";
 import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
 
@@ -48,20 +45,20 @@ const App = () => {
         {!showSplash && showOnboarding && <Onboarding onComplete={handleOnboardingComplete} />}
         <BrowserRouter>
           <Routes>
+            {/* Home — no sidebar */}
+            <Route path="/" element={<Home />} />
+
+            {/* All section pages — with sidebar */}
             <Route element={<AppLayout />}>
-              <Route path="/" element={<Dashboard />} />
-              <Route path="/tweet-analysis" element={<Index />} />
-              <Route path="/history" element={<History />} />
-              <Route path="/data-analysis" element={<DataAnalysis />} />
-              <Route path="/meltwater-report" element={<MeltwaterReport />} />
-              <Route path="/monitoring/x" element={<XMonitoring />} />
-              <Route path="/monitoring/tiktok" element={<TikTokMonitoring />} />
-              <Route path="/monitoring/instagram" element={<InstagramMonitoring />} />
-              <Route path="/monitoring/youtube" element={<YouTubeMonitoring />} />
-              <Route path="/explore" element={<Explore />} />
+              <Route path="/explore" element={<Overview />} />
+              <Route path="/explore/tiktok" element={<TikTokPage />} />
+              <Route path="/explore/instagram" element={<InstagramPage />} />
+              <Route path="/explore/youtube" element={<YouTubePage />} />
+              <Route path="/explore/x" element={<XPage />} />
+              <Route path="/reports" element={<MeltwaterReport />} />
               <Route path="/settings" element={<Settings />} />
             </Route>
-            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
