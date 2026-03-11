@@ -13,6 +13,7 @@ import type { CommentSort } from "@/components/explore/CommentsPanel";
 import type { DrawerFilter } from "@/lib/db-types";
 import { INSTAGRAM_ACCOUNTS } from "@/lib/db-types";
 import { InstagramIcon } from "@/components/icons/PlatformIcons";
+import { useCommentTexts } from "@/hooks/useCommentTexts";
 
 export default function InstagramPage() {
   const { dateRange } = useDateRange();
@@ -47,11 +48,17 @@ export default function InstagramPage() {
     dateTo: dateRange.to,
   });
 
+  // Comment texts for word cloud
+  const { data: commentTexts, isLoading: commentTextsLoading } = useCommentTexts({
+    platform: "instagram", account: qOpts.account, dateFrom: qOpts.dateFrom, dateTo: qOpts.dateTo,
+  });
+
   const drawerQ = useInstagramComments({
     ...qOpts,
     filterDate: drawerFilter?.type === "date" ? drawerFilter.date : undefined,
     filterPostId: drawerFilter?.type === "post" ? drawerFilter.postId : undefined,
     account: drawerFilter?.type === "account" ? drawerFilter.account : qOpts.account,
+    search: drawerFilter?.type === "word" ? drawerFilter.word : undefined,
     enabled: !!drawerFilter,
   });
 
@@ -82,6 +89,8 @@ export default function InstagramPage() {
       drawerLoading={drawerQ.isLoading}
       drawerFilter={drawerFilter}
       onDrawerFilterChange={setDrawerFilter}
+      commentTexts={commentTexts}
+      commentTextsLoading={commentTextsLoading}
     />
   );
 }

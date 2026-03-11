@@ -39,8 +39,8 @@ export default function Home() {
         <div className="flex items-center gap-3 mb-2">
           <div className="relative">
             <div className="absolute inset-0 bg-thmanyah-green/15 rounded-xl blur-md" />
-            <div className="relative w-12 h-12 bg-foreground rounded-xl border border-white/10 flex items-center justify-center">
-              <img src="/Usable/thamanyah.png" alt="ثمانية" className="w-7 h-7" style={{ imageRendering: "-webkit-optimize-contrast" }} />
+            <div className="relative w-12 h-12 bg-card rounded-xl border border-border flex items-center justify-center">
+              <img src="/Usable/thamanyah.png" alt="ثمانية" className="w-7 h-7 dark:invert-0 invert" style={{ imageRendering: "-webkit-optimize-contrast" }} />
             </div>
           </div>
           <div>

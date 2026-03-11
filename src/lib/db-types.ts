@@ -150,7 +150,8 @@ export interface AccountCount {
 export type DrawerFilter =
   | { type: "date"; date: string; label: string }
   | { type: "post"; postId: string; label: string }
-  | { type: "account"; account: string; label: string };
+  | { type: "account"; account: string; label: string }
+  | { type: "word"; word: string; label: string };
 
 export interface AccountOption {
   username: string;

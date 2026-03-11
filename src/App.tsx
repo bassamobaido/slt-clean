@@ -38,7 +38,7 @@ const App = () => {
   }, []);
 
   return (
-    <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
+    <ThemeProvider attribute="class" defaultTheme="system" enableSystem storageKey="thmanyah-theme">
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <Toaster />

@@ -40,7 +40,7 @@ export default function CommentsPanel({
         <h3 className="text-[14px] font-display font-bold text-foreground/80">
           التعليقات
         </h3>
-        <span className="px-2 py-0.5 rounded-full bg-foreground text-white text-[10px] font-bold" dir="ltr">
+        <span className="px-2 py-0.5 rounded-full bg-thmanyah-green text-white text-[10px] font-bold" dir="ltr">
           {fmtNum(total)}
         </span>
       </div>

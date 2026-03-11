@@ -10,6 +10,8 @@ import { useOverviewData } from "@/hooks/useOverviewData";
 import { fmtNum, PLATFORM_COLORS, PLATFORM_LABELS, type Platform } from "@/lib/db-types";
 import { PLATFORM_ICON_MAP } from "@/components/icons/PlatformIcons";
 import PageExplainer from "@/components/PageExplainer";
+import WordCloud from "@/components/explore/WordCloud";
+import { useAllCommentTexts } from "@/hooks/useCommentTexts";
 
 function Skeleton({ className = "" }: { className?: string }) {
   return <div className={`animate-pulse rounded-lg bg-muted/20 ${className}`} />;
@@ -19,6 +21,7 @@ export default function Overview() {
   const navigate = useNavigate();
   const { dateRange } = useDateRange();
   const { data, isLoading } = useOverviewData(dateRange.from, dateRange.to);
+  const { data: allTexts, isLoading: textsLoading } = useAllCommentTexts(dateRange.from, dateRange.to);
 
   const platformCards: { key: Platform; path: string }[] = [
     { key: "tiktok", path: "/explore/tiktok" },
@@ -168,6 +171,12 @@ export default function Overview() {
           </div>
         </div>
       )}
+
+      {/* Word Cloud */}
+      <WordCloud
+        texts={allTexts || []}
+        isLoading={textsLoading}
+      />
 
       {/* Trending Posts */}
       {data && data.trendingPosts.length > 0 && (

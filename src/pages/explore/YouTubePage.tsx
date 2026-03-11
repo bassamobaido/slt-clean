@@ -12,6 +12,7 @@ import type { CommentSort } from "@/components/explore/CommentsPanel";
 import type { DrawerFilter } from "@/lib/db-types";
 import { YOUTUBE_ACCOUNTS } from "@/lib/db-types";
 import { YouTubeIcon } from "@/components/icons/PlatformIcons";
+import { useCommentTexts } from "@/hooks/useCommentTexts";
 
 export default function YouTubePage() {
   const { dateRange } = useDateRange();
@@ -45,11 +46,17 @@ export default function YouTubePage() {
     dateTo: dateRange.to,
   });
 
+  // Comment texts for word cloud
+  const { data: commentTexts, isLoading: commentTextsLoading } = useCommentTexts({
+    platform: "youtube", account: qOpts.account, dateFrom: qOpts.dateFrom, dateTo: qOpts.dateTo,
+  });
+
   const drawerQ = useYouTubeComments({
     ...qOpts,
     filterDate: drawerFilter?.type === "date" ? drawerFilter.date : undefined,
     filterPostId: drawerFilter?.type === "post" ? drawerFilter.postId : undefined,
     account: drawerFilter?.type === "account" ? drawerFilter.account : qOpts.account,
+    search: drawerFilter?.type === "word" ? drawerFilter.word : undefined,
     enabled: !!drawerFilter,
   });
 
@@ -80,6 +87,8 @@ export default function YouTubePage() {
       drawerLoading={drawerQ.isLoading}
       drawerFilter={drawerFilter}
       onDrawerFilterChange={setDrawerFilter}
+      commentTexts={commentTexts}
+      commentTextsLoading={commentTextsLoading}
     />
   );
 }

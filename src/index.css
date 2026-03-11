@@ -124,50 +124,51 @@
 
 @layer base {
   :root {
-    /* ── Thmanyah Brand Colors (HSL) ── */
-    --background: 36 30% 96%;          /* #F7F4EE Off-White */
-    --foreground: 0 0% 0%;             /* #000000 Black */
+    /* ── Light Mode ── */
+    --background: 0 0% 98%;            /* #FAFAFA */
+    --foreground: 222 47% 11%;         /* #111827 */
 
     --card: 0 0% 100%;                 /* #FFFFFF */
-    --card-foreground: 0 0% 0%;        /* #000000 */
+    --card-foreground: 222 47% 11%;    /* #111827 */
 
     --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 0%;
+    --popover-foreground: 222 47% 11%;
 
-    --primary: 0 0% 0%;                /* #000000 Thmanyah Black */
-    --primary-foreground: 0 0% 100%;   /* #FFFFFF */
+    --primary: 155 100% 38%;           /* #00C17A Brand Green */
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 36 20% 94%;           /* #F2EDEA Warm White */
-    --secondary-foreground: 0 0% 0%;
+    --secondary: 220 14% 96%;          /* #F3F4F6 */
+    --secondary-foreground: 222 47% 11%;
 
-    --muted: 36 15% 93%;               /* #EFEDE2 Warm Gray */
-    --muted-foreground: 233 18% 35%;   /* #494C6B Muted Indigo */
+    --muted: 220 14% 96%;              /* #F3F4F6 */
+    --muted-foreground: 220 9% 46%;    /* #6B7280 */
 
-    --accent: 155 100% 38%;            /* #00C17A Thmanyah Green */
-    --accent-foreground: 0 0% 100%;    /* White on green */
+    --accent: 155 100% 38%;            /* #00C17A */
+    --accent-foreground: 0 0% 100%;
 
-    --destructive: 8 88% 58%;          /* #F24935 Thmanyah Red */
+    --destructive: 8 88% 58%;          /* #F24935 */
     --destructive-foreground: 0 0% 100%;
 
-    --border: 36 15% 91%;              /* #EFEDE2 Light Warm */
-    --input: 36 15% 91%;
-    --ring: 155 100% 38%;              /* Thmanyah Green */
+    --border: 220 13% 91%;             /* #E5E7EB */
+    --input: 220 13% 91%;
+    --ring: 155 100% 38%;
 
-    --success: 155 100% 38%;           /* #00C17A */
-    --warning: 43 100% 52%;            /* #FFBC0A */
-    --info: 213 100% 49%;              /* #0072F9 */
+    --success: 155 100% 38%;
+    --warning: 43 100% 52%;
+    --info: 213 100% 49%;
 
-    --radius: 0.75rem;                 /* 12px brand radius */
+    --radius: 0.75rem;
 
-    /* ── Sidebar (Dark) ── */
-    --sidebar-background: 0 0% 0%;             /* #000000 */
-    --sidebar-foreground: 0 0% 100%;           /* White */
-    --sidebar-primary: 155 100% 38%;           /* Green accent */
+    /* ── Sidebar (Light) ── */
+    --sidebar-background: 0 0% 100%;           /* #FFFFFF */
+    --sidebar-foreground: 222 47% 11%;         /* #111827 */
+    --sidebar-primary: 155 100% 38%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 230 14% 15%;             /* #2B2D3F Charcoal */
-    --sidebar-accent-foreground: 0 0% 100%;
-    --sidebar-border: 230 14% 15%;
+    --sidebar-accent: 220 14% 96%;             /* #F3F4F6 */
+    --sidebar-accent-foreground: 222 47% 11%;
+    --sidebar-border: 220 13% 91%;             /* #E5E7EB */
     --sidebar-ring: 155 100% 38%;
+    --sidebar-muted: 218 11% 65%;              /* #9CA3AF */
 
     /* ── Thmanyah Extended Palette ── */
     --thmanyah-green: 155 100% 38%;
@@ -189,46 +190,49 @@
   }
 
   .dark {
-    --background: 230 26% 10%;         /* #111421 Dark Slate */
-    --foreground: 36 30% 96%;          /* #F7F4EE */
+    /* ── Dark Mode ── */
+    --background: 240 20% 5%;          /* #0A0A0F */
+    --foreground: 220 14% 96%;         /* #F3F4F6 */
 
-    --card: 230 14% 20%;              /* #2B2D3F Charcoal */
-    --card-foreground: 36 30% 96%;
+    --card: 240 18% 8%;               /* #111118 */
+    --card-foreground: 220 14% 96%;
 
-    --popover: 230 14% 20%;
-    --popover-foreground: 36 30% 96%;
+    --popover: 240 18% 8%;
+    --popover-foreground: 220 14% 96%;
 
-    --primary: 155 100% 38%;           /* Green becomes primary in dark */
-    --primary-foreground: 0 0% 0%;
+    --primary: 155 100% 38%;           /* #00C17A */
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 230 14% 20%;
-    --secondary-foreground: 36 30% 96%;
+    --secondary: 240 18% 8%;
+    --secondary-foreground: 220 14% 96%;
 
-    --muted: 230 14% 20%;
-    --muted-foreground: 233 18% 50%;
+    --muted: 240 24% 15%;              /* #1E1E2E */
+    --muted-foreground: 218 11% 65%;   /* #9CA3AF */
 
     --accent: 155 100% 38%;
-    --accent-foreground: 0 0% 0%;
+    --accent-foreground: 0 0% 100%;
 
     --destructive: 8 88% 58%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 230 14% 25%;
-    --input: 230 14% 25%;
+    --border: 240 24% 15%;             /* #1E1E2E */
+    --input: 240 24% 15%;
     --ring: 155 100% 38%;
 
     --success: 155 100% 38%;
     --warning: 43 100% 52%;
     --info: 213 100% 55%;
 
-    --sidebar-background: 0 0% 0%;
-    --sidebar-foreground: 36 30% 96%;
+    /* ── Sidebar (Dark) ── */
+    --sidebar-background: 240 18% 8%;         /* #111118 */
+    --sidebar-foreground: 220 14% 96%;        /* #F3F4F6 */
     --sidebar-primary: 155 100% 38%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 230 14% 15%;
-    --sidebar-accent-foreground: 36 30% 96%;
-    --sidebar-border: 230 14% 15%;
+    --sidebar-accent: 240 24% 15%;            /* #1E1E2E */
+    --sidebar-accent-foreground: 220 14% 96%;
+    --sidebar-border: 240 24% 15%;            /* #1E1E2E */
     --sidebar-ring: 155 100% 38%;
+    --sidebar-muted: 220 9% 46%;              /* #6B7280 */
   }
 }
 
@@ -718,11 +722,19 @@
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.08);
   border-radius: 4px;
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.2);
 }
 
@@ -735,22 +747,14 @@
   animation: slide-in-left 0.25s ease-out;
 }
 
-/* ── Light mode scrollbar (main content) ── */
-:root:not(.dark) .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.08);
-}
-:root:not(.dark) .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.15);
-}
-
 /* ── Global smooth transitions for theme switching ── */
 * {
-  transition-property: background-color, border-color;
-  transition-duration: 0.2s;
+  transition-property: background-color, border-color, color;
+  transition-duration: 0.15s;
   transition-timing-function: ease;
 }
 
 /* Exclude animations from the blanket transition */
-[class*="animate-"], .recharts-wrapper * {
+[class*="animate-"], .recharts-wrapper *, .recharts-surface * {
   transition-property: none;
 }

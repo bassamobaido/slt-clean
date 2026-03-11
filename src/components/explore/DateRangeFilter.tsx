@@ -32,7 +32,7 @@ export default function DateRangeFilter() {
           }}
           className={`px-3 py-1.5 rounded-full text-[11px] font-bold transition-all ${
             dateRange.preset === p.key
-              ? "bg-foreground text-white"
+              ? "bg-thmanyah-green text-white"
               : "bg-card border border-border/50 text-muted-foreground/60 hover:text-foreground"
           }`}
         >

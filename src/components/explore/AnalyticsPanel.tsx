@@ -5,6 +5,7 @@ import {
 import { MessageSquare, Eye, Heart, TrendingUp } from "lucide-react";
 import type { PlatformStats, ChartPoint, TopPost, AccountCount, DrawerFilter, Platform } from "@/lib/db-types";
 import { fmtNum, PLATFORM_COLORS } from "@/lib/db-types";
+import WordCloud from "./WordCloud";
 
 /* ── Skeleton ── */
 function Skeleton({ className = "" }: { className?: string }) {
@@ -59,11 +60,15 @@ interface Props {
   isLoading: boolean;
   showAccountPie: boolean;
   onChartClick?: (filter: DrawerFilter) => void;
+  commentTexts?: string[];
+  commentTextsLoading?: boolean;
+  onWordClick?: (word: string) => void;
 }
 
 export default function AnalyticsPanel({
   platform, stats, commentsPerDay, topPosts, postsPerDay,
   commentsPerAccount, isLoading, showAccountPie, onChartClick,
+  commentTexts, commentTextsLoading, onWordClick,
 }: Props) {
   const color = PLATFORM_COLORS[platform];
 
@@ -252,6 +257,13 @@ export default function AnalyticsPanel({
           </div>
         </div>
       )}
+
+      {/* Word Cloud */}
+      <WordCloud
+        texts={commentTexts || []}
+        isLoading={commentTextsLoading || false}
+        onWordClick={onWordClick}
+      />
     </div>
   );
 }

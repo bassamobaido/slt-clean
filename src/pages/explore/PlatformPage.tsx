@@ -47,6 +47,9 @@ interface PlatformPageProps {
   drawerLoading: boolean;
   drawerFilter: DrawerFilter | null;
   onDrawerFilterChange: (f: DrawerFilter | null) => void;
+  /* Word Cloud */
+  commentTexts?: string[];
+  commentTextsLoading?: boolean;
 }
 
 export default function PlatformPage({
@@ -56,6 +59,7 @@ export default function PlatformPage({
   commentsPerDay, topPosts, postsPerDay, commentsPerAccount, chartsLoading,
   account, onAccountChange, search, onSearchChange, sort, onSortChange,
   drawerComments, drawerLoading, drawerFilter, onDrawerFilterChange,
+  commentTexts, commentTextsLoading,
 }: PlatformPageProps) {
   const color = PLATFORM_COLORS[platform];
   const allComments = useMemo(
@@ -133,6 +137,9 @@ export default function PlatformPage({
             isLoading={statsLoading || chartsLoading}
             showAccountPie={!account}
             onChartClick={(f) => onDrawerFilterChange(f)}
+            commentTexts={commentTexts}
+            commentTextsLoading={commentTextsLoading}
+            onWordClick={(word) => onDrawerFilterChange({ type: "word", word, label: `كلمة: ${word}` })}
           />
         </div>
 
