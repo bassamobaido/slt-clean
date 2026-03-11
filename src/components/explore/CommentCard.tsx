@@ -1,9 +1,9 @@
-import { Heart, CornerDownLeft, ExternalLink, Play } from "lucide-react";
+import { useState } from "react";
+import { Heart, CornerDownLeft, Image as ImageIcon, Play } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { ar } from "date-fns/locale";
 import type { EnrichedComment } from "@/lib/db-types";
 import { PLATFORM_COLORS } from "@/lib/db-types";
-import { PLATFORM_ICON_MAP } from "@/components/icons/PlatformIcons";
 
 function relativeTime(iso: string): string {
   try {
@@ -16,57 +16,24 @@ function relativeTime(iso: string): string {
 export default function CommentCard({ comment }: { comment: EnrichedComment }) {
   const c = comment;
   const platformColor = PLATFORM_COLORS[c.platform];
-  const hasThumbnail = !!c.parentPostThumbnail;
-  const PlatformIcon = PLATFORM_ICON_MAP[c.platform];
+  const [thumbError, setThumbError] = useState(false);
+  const hasThumbnail = !!c.parentPostThumbnail && !thumbError;
 
   return (
-    <div className="group rounded-xl bg-card border border-border/40 p-4 hover:border-border/60 transition-colors">
+    <div className="group rounded-xl bg-card border border-border/40 p-4 hover:border-border/60 transition-colors" dir="rtl">
       <div className="flex gap-3">
-        {/* Post Thumbnail (Instagram/YouTube) or platform icon placeholder */}
-        {(hasThumbnail || c.platform === "tiktok") && c.parentPostId && (
-          <a
-            href={c.parentPostUrl || "#"}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="shrink-0 block"
-          >
-            {hasThumbnail ? (
-              <div className="relative w-10 h-10 rounded-lg overflow-hidden bg-muted/20">
-                <img
-                  src={c.parentPostThumbnail}
-                  alt=""
-                  className="w-full h-full object-cover"
-                  loading="lazy"
-                />
-                {c.platform === "youtube" && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/30">
-                    <Play className="w-3.5 h-3.5 text-white fill-white" />
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div
-                className="w-10 h-10 rounded-lg flex items-center justify-center"
-                style={{ backgroundColor: platformColor + "15" }}
-              >
-                {PlatformIcon && <PlatformIcon className="w-4 h-4" style={{ color: platformColor }} />}
-              </div>
-            )}
-          </a>
-        )}
-
-        {/* Avatar */}
+        {/* RIGHT: Avatar (40px circle) */}
         <div className="shrink-0">
           {c.authorAvatar ? (
             <img
               src={c.authorAvatar}
               alt=""
-              className="w-9 h-9 rounded-full object-cover bg-muted/20"
+              className="w-10 h-10 rounded-full object-cover bg-muted/20"
               loading="lazy"
             />
           ) : (
             <div
-              className="w-9 h-9 rounded-full flex items-center justify-center text-white text-[11px] font-bold"
+              className="w-10 h-10 rounded-full flex items-center justify-center text-white text-[12px] font-bold"
               style={{ backgroundColor: platformColor }}
             >
               {c.authorName.charAt(0)}
@@ -74,9 +41,9 @@ export default function CommentCard({ comment }: { comment: EnrichedComment }) {
           )}
         </div>
 
-        {/* Content */}
+        {/* LEFT: Content */}
         <div className="flex-1 min-w-0">
-          {/* Header */}
+          {/* Header: author + time */}
           <div className="flex items-center gap-2 mb-1 flex-wrap">
             <span className="text-[12px] font-bold text-foreground/80">
               {c.authorName}
@@ -101,8 +68,8 @@ export default function CommentCard({ comment }: { comment: EnrichedComment }) {
             {c.text}
           </p>
 
-          {/* Footer */}
-          <div className="flex items-center gap-3 flex-wrap">
+          {/* Likes & replies */}
+          <div className="flex items-center gap-3 mb-2 flex-wrap">
             <span className="flex items-center gap-1 text-[10px] font-bold text-muted-foreground/40">
               <Heart className="w-3 h-3" />
               <span dir="ltr">{c.likes}</span>
@@ -113,18 +80,48 @@ export default function CommentCard({ comment }: { comment: EnrichedComment }) {
                 <span dir="ltr">{c.replyCount}</span> رد
               </span>
             )}
-            {c.parentPostText && !hasThumbnail && (
-              <a
-                href={c.parentPostUrl || "#"}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1 text-[10px] font-bold text-thmanyah-blue/60 hover:text-thmanyah-blue transition-colors truncate max-w-[200px]"
-              >
-                <ExternalLink className="w-3 h-3 shrink-0" />
-                <span className="truncate">{c.parentPostText}</span>
-              </a>
-            )}
           </div>
+
+          {/* Post thumbnail row (below comment) */}
+          {c.parentPostId && (c.parentPostThumbnail || c.parentPostText) && (
+            <a
+              href={c.parentPostUrl || "#"}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 p-1.5 rounded-lg bg-muted/5 border border-border/30 hover:border-border/50 transition-colors max-w-fit"
+            >
+              {/* Thumbnail or placeholder */}
+              {hasThumbnail ? (
+                <div className="relative w-8 h-8 rounded-md overflow-hidden bg-muted/20 shrink-0">
+                  <img
+                    src={c.parentPostThumbnail}
+                    alt=""
+                    className="w-full h-full object-cover"
+                    loading="lazy"
+                    onError={() => setThumbError(true)}
+                  />
+                  {c.platform === "youtube" && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+                      <Play className="w-2.5 h-2.5 text-white fill-white" />
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div
+                  className="w-8 h-8 rounded-md flex items-center justify-center shrink-0"
+                  style={{ backgroundColor: platformColor + "12" }}
+                >
+                  <ImageIcon className="w-3.5 h-3.5 text-muted-foreground/30" />
+                </div>
+              )}
+              {/* Post title/caption */}
+              {c.parentPostText && (
+                <span className="text-[10px] font-bold text-muted-foreground/50 truncate max-w-[180px]">
+                  {c.parentPostText}
+                </span>
+              )}
+            </a>
+          )}
         </div>
       </div>
     </div>
