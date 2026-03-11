@@ -11,6 +11,7 @@ import type {
   EnrichedComment, DrawerFilter,
 } from "@/lib/db-types";
 import { PLATFORM_LABELS, PLATFORM_COLORS } from "@/lib/db-types";
+import { getAccountAvatar } from "@/lib/accountAvatars";
 
 /* ── Types for hook results ── */
 interface InfiniteCommentResult {
@@ -96,20 +97,26 @@ export default function PlatformPage({
         >
           الكل
         </button>
-        {accounts.map((acc) => (
-          <button
-            key={acc.username}
-            onClick={() => onAccountChange(acc.username)}
-            className={`px-3 py-1.5 rounded-full text-[11px] font-bold transition-all ${
-              account === acc.username
-                ? "text-white"
-                : "bg-card border border-border/50 text-muted-foreground/60 hover:text-foreground"
-            }`}
-            style={account === acc.username ? { backgroundColor: color } : undefined}
-          >
-            {acc.nameAr}
-          </button>
-        ))}
+        {accounts.map((acc) => {
+          const avatar = getAccountAvatar(acc.username);
+          return (
+            <button
+              key={acc.username}
+              onClick={() => onAccountChange(acc.username)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold transition-all ${
+                account === acc.username
+                  ? "text-white"
+                  : "bg-card border border-border/50 text-muted-foreground/60 hover:text-foreground"
+              }`}
+              style={account === acc.username ? { backgroundColor: color } : undefined}
+            >
+              {avatar && (
+                <img src={avatar} alt="" className="w-4 h-4 rounded-full object-cover" />
+              )}
+              {acc.nameAr}
+            </button>
+          );
+        })}
       </div>
 
       {/* Split Layout */}

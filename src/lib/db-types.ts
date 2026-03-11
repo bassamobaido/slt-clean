@@ -192,11 +192,11 @@ export const INSTAGRAM_ACCOUNTS: AccountOption[] = [
 ];
 
 export const YOUTUBE_ACCOUNTS: AccountOption[] = [
-  { username: "Thmanyah", nameAr: "ثمانية" },
-  { username: "ThmanyahSports", nameAr: "رياضة ثمانية" },
-  { username: "ThmanyahExit", nameAr: "مخرج ثمانية" },
-  { username: "ThmanyahLiving", nameAr: "معيشة ثمانية" },
-  { username: "RadioThmanyah", nameAr: "راديو ثمانية" },
+  { username: "ثمانية", nameAr: "ثمانية" },
+  { username: "رياضة ثمانية", nameAr: "رياضة ثمانية" },
+  { username: "مخرج ثمانية", nameAr: "مخرج ثمانية" },
+  { username: "شركة ثمانية", nameAr: "شركة ثمانية" },
+  { username: "إذاعة ثمانية", nameAr: "إذاعة ثمانية" },
 ];
 
 export const PLATFORM_COLORS: Record<Platform, string> = {

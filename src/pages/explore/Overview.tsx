@@ -1,13 +1,14 @@
 import { useNavigate } from "react-router-dom";
 import {
-  AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer, Legend, Cell,
+  AreaChart, Area, XAxis, YAxis,
+  Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
 import { MessageSquare, Eye, Heart, TrendingUp, ExternalLink, Compass } from "lucide-react";
 import { useDateRange } from "@/contexts/DateRangeContext";
 import DateRangeFilter from "@/components/explore/DateRangeFilter";
 import { useOverviewData } from "@/hooks/useOverviewData";
 import { fmtNum, PLATFORM_COLORS, PLATFORM_LABELS, type Platform } from "@/lib/db-types";
+import { PLATFORM_ICON_MAP } from "@/components/icons/PlatformIcons";
 import PageExplainer from "@/components/PageExplainer";
 
 function Skeleton({ className = "" }: { className?: string }) {
@@ -46,14 +47,14 @@ export default function Overview() {
         ].map((kpi) => {
           const Icon = kpi.icon;
           return (
-            <div key={kpi.label} className="bg-card rounded-2xl border border-border/40 p-5">
+            <div key={kpi.label} className="bg-card rounded-2xl border border-border/40 p-5 card-hover-lift">
               <div className={`p-2.5 rounded-xl ${kpi.bg} w-fit mb-3`}>
                 <Icon className={`w-4 h-4 ${kpi.color}`} strokeWidth={1.8} />
               </div>
               {isLoading ? (
                 <Skeleton className="h-7 w-20 mb-1" />
               ) : (
-                <div className="text-2xl font-bold text-foreground/90 mb-1" dir="ltr">
+                <div className="text-2xl font-bold text-foreground/90 mb-1 counter-animate" dir="ltr">
                   {fmtNum(kpi.value || 0)}
                 </div>
               )}
@@ -74,10 +75,11 @@ export default function Overview() {
               <button
                 key={key}
                 onClick={() => navigate(path)}
-                className="group text-right bg-card rounded-2xl border border-border/40 p-5 hover:border-border hover:shadow-sm transition-all"
+                className="group text-right bg-card rounded-2xl border border-border/40 p-5 hover:border-border card-hover-lift transition-all"
               >
                 <div className="flex items-center gap-2 mb-3">
-                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: color }} />
+                  {(() => { const PIcon = PLATFORM_ICON_MAP[key]; return PIcon ? <PIcon className="w-4 h-4" /> : null; })()}
+
                   <span className="text-[13px] font-bold text-foreground/80">{PLATFORM_LABELS[key]}</span>
                   <ExternalLink className="w-3 h-3 text-muted-foreground/20 mr-auto group-hover:text-muted-foreground/50 transition-colors" />
                 </div>
@@ -122,31 +124,41 @@ export default function Overview() {
                 <defs>
                   {(["tiktok", "instagram", "youtube"] as const).map((p) => (
                     <linearGradient key={p} id={`grad-${p}`} x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor={PLATFORM_COLORS[p]} stopOpacity={0.2} />
+                      <stop offset="5%" stopColor={PLATFORM_COLORS[p]} stopOpacity={0.15} />
                       <stop offset="95%" stopColor={PLATFORM_COLORS[p]} stopOpacity={0} />
                     </linearGradient>
                   ))}
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.04)" />
-                <XAxis dataKey="date" tick={{ fontSize: 10, fontWeight: 700 }} tickFormatter={(v) => v.slice(5)} />
-                <YAxis tick={{ fontSize: 10, fontWeight: 700 }} />
+                <XAxis
+                  dataKey="date"
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fontSize: 10, fontWeight: 700, fill: "hsl(var(--muted-foreground))" }}
+                  tickFormatter={(v) => v.slice(5)}
+                />
+                <YAxis
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fontSize: 10, fontWeight: 700, fill: "hsl(var(--muted-foreground))" }}
+                  tickFormatter={(v: number) => v.toLocaleString("en-US")}
+                />
                 <Tooltip
                   content={({ active, payload, label }: any) =>
                     active && payload ? (
-                      <div className="bg-card p-3 border border-border rounded-xl shadow-lg">
-                        <p className="font-bold text-sm mb-1">{label}</p>
+                      <div className="bg-[#1a1a2e] text-white px-3 py-2 rounded-xl shadow-xl border border-white/10 text-[11px] font-bold">
+                        <p className="text-white/60 mb-1">{label}</p>
                         {payload.map((p: any) => (
-                          <p key={p.name} className="text-xs font-bold" style={{ color: p.stroke }}>
-                            {PLATFORM_LABELS[p.name as Platform] || p.name}: {p.value}
+                          <p key={p.name} style={{ color: p.stroke }}>
+                            {PLATFORM_LABELS[p.name as Platform] || p.name}: {p.value?.toLocaleString("en-US")}
                           </p>
                         ))}
                       </div>
                     ) : null
                   }
                 />
-                <Area type="monotone" dataKey="tiktok" stroke={PLATFORM_COLORS.tiktok} fill="url(#grad-tiktok)" strokeWidth={2} dot={false} />
-                <Area type="monotone" dataKey="instagram" stroke={PLATFORM_COLORS.instagram} fill="url(#grad-instagram)" strokeWidth={2} dot={false} />
-                <Area type="monotone" dataKey="youtube" stroke={PLATFORM_COLORS.youtube} fill="url(#grad-youtube)" strokeWidth={2} dot={false} />
+                <Area type="monotone" dataKey="tiktok" stroke={PLATFORM_COLORS.tiktok} fill="url(#grad-tiktok)" strokeWidth={2} dot={false} animationDuration={800} />
+                <Area type="monotone" dataKey="instagram" stroke={PLATFORM_COLORS.instagram} fill="url(#grad-instagram)" strokeWidth={2} dot={false} animationDuration={800} />
+                <Area type="monotone" dataKey="youtube" stroke={PLATFORM_COLORS.youtube} fill="url(#grad-youtube)" strokeWidth={2} dot={false} animationDuration={800} />
                 <Legend
                   iconType="circle"
                   formatter={(v: string) => <span className="font-bold text-xs">{PLATFORM_LABELS[v as Platform] || v}</span>}
@@ -165,7 +177,7 @@ export default function Overview() {
             {data.trendingPosts.map((post) => {
               const pColor = PLATFORM_COLORS[post.platform];
               return (
-                <div key={`${post.platform}-${post.id}`} className="bg-card rounded-xl border border-border/40 p-4">
+                <div key={`${post.platform}-${post.id}`} className="bg-card rounded-xl border border-border/40 p-4 card-hover-lift">
                   <div className="flex items-center gap-2 mb-2">
                     <span className="px-2 py-0.5 rounded text-[9px] font-bold text-white" style={{ backgroundColor: pColor }}>
                       {PLATFORM_LABELS[post.platform]}

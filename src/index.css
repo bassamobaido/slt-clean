@@ -734,3 +734,23 @@
 .animate-slide-in-left {
   animation: slide-in-left 0.25s ease-out;
 }
+
+/* ── Light mode scrollbar (main content) ── */
+:root:not(.dark) .custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.08);
+}
+:root:not(.dark) .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.15);
+}
+
+/* ── Global smooth transitions for theme switching ── */
+* {
+  transition-property: background-color, border-color;
+  transition-duration: 0.2s;
+  transition-timing-function: ease;
+}
+
+/* Exclude animations from the blanket transition */
+[class*="animate-"], .recharts-wrapper * {
+  transition-property: none;
+}
