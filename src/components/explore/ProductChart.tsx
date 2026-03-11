@@ -26,7 +26,7 @@ export default function ProductChart({
   title = "تفاعل المنتجات",
   onProductClick,
 }: Props) {
-  const filtered = (data || []).filter(p => p.totalComments > 0).slice(0, 25);
+  const filtered = (data || []).filter(p => p.totalComments > 0).slice(0, 8);
 
   if (isLoading) {
     return (
@@ -122,6 +122,7 @@ export default function ProductChart({
           </BarChart>
         </ResponsiveContainer>
       </div>
+      <p className="text-[10px] font-bold text-muted-foreground/30 text-center mt-2">أعلى ٨ منتجات تفاعلاً</p>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { useMemo, useState, useRef, useLayoutEffect, useEffect } from "react";
+import { useMemo, useState, useRef, useEffect } from "react";
 import { Cloud } from "lucide-react";
 
 /* ── Arabic Stop Words (expanded with Gulf dialect, media terms) ── */
@@ -251,13 +251,21 @@ export default function WordCloud({ texts, isLoading, onWordClick }: Props) {
 
   const words = useMemo(() => analyzeComments(texts), [texts]);
 
-  // Measure container width — read synchronously first, then observe
-  useLayoutEffect(() => {
-    if (!containerRef.current) return;
-    // Synchronous initial measurement
-    const w = containerRef.current.getBoundingClientRect().width;
-    if (w > 0) setContainerWidth(w);
+  // Measure container width with multiple fallbacks
+  useEffect(() => {
+    if (!expanded || !containerRef.current) return;
 
+    const measure = () => {
+      if (!containerRef.current) return;
+      const w = containerRef.current.getBoundingClientRect().width;
+      if (w > 0) setContainerWidth(w);
+      return w;
+    };
+
+    // Try immediately
+    const w = measure();
+
+    // ResizeObserver for ongoing changes
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const newW = entry.contentRect.width;
@@ -265,20 +273,22 @@ export default function WordCloud({ texts, isLoading, onWordClick }: Props) {
       }
     });
     observer.observe(containerRef.current);
-    return () => observer.disconnect();
-  }, [expanded]);
 
-  // Fallback: if still 0 after mount, retry after a frame
-  useEffect(() => {
-    if (containerWidth > 0 || !containerRef.current) return;
-    const id = requestAnimationFrame(() => {
-      if (containerRef.current) {
-        const w = containerRef.current.getBoundingClientRect().width;
-        if (w > 0) setContainerWidth(w);
-      }
-    });
-    return () => cancelAnimationFrame(id);
-  }, [containerWidth, expanded]);
+    // Fallback retries if initial measurement was 0 (CSS transition not complete)
+    let timers: ReturnType<typeof setTimeout>[] = [];
+    if (!w || w <= 0) {
+      timers = [
+        setTimeout(measure, 50),
+        setTimeout(measure, 200),
+        setTimeout(measure, 500),
+      ];
+    }
+
+    return () => {
+      observer.disconnect();
+      timers.forEach(clearTimeout);
+    };
+  }, [expanded]);
 
   const placedWords = useMemo(
     () => computeLayout(words, containerWidth, CONTAINER_HEIGHT),
@@ -328,8 +338,7 @@ export default function WordCloud({ texts, isLoading, onWordClick }: Props) {
       {expanded && (
         <div
           ref={containerRef}
-          className="relative w-full overflow-hidden"
-          style={{ height: CONTAINER_HEIGHT }}
+          className="relative w-full overflow-hidden min-h-[400px] h-[400px]"
         >
           {placedWords.map((w, i) => {
             const isHovered = hoveredIdx === i;
