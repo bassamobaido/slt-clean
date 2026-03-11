@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
-import { Twitter, ArrowRight, Calendar, TrendingUp, TrendingDown, Minus, History as HistoryIcon, FlaskConical } from 'lucide-react';
+import { Twitter, ArrowRight, Calendar, TrendingUp, TrendingDown, Minus, History as HistoryIcon, Inbox } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
@@ -9,7 +9,6 @@ import { AnalysisResults } from '@/components/AnalysisResults';
 import { format } from 'date-fns';
 import { ar } from 'date-fns/locale';
 import PageExplainer from '@/components/PageExplainer';
-import { SAMPLE_ANALYSES, type SampleAnalysis } from '@/lib/sampleData';
 
 interface SavedAnalysis {
   id: string;
@@ -32,31 +31,12 @@ const History = () => {
   const [analyses, setAnalyses] = useState<SavedAnalysis[]>([]);
   const [selectedAnalysis, setSelectedAnalysis] = useState<SavedAnalysis | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isDemo, setIsDemo] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
   useEffect(() => {
     loadHistory();
   }, []);
-
-  /** Convert SampleAnalysis → SavedAnalysis shape for unified rendering */
-  const sampleToSaved = (s: SampleAnalysis): SavedAnalysis => ({
-    id: s.id,
-    created_at: s.created_at,
-    search_terms: s.search_terms,
-    total_tweets: s.total_tweets,
-    positive_count: s.positive_count,
-    negative_count: s.negative_count,
-    neutral_count: s.neutral_count,
-    insights: s.insights,
-    recommendations: s.recommendations,
-    main_issues: s.main_issues.join("\n"),
-    sample_tweets: { positive: [], negative: [], neutral: [] },
-    all_tweets: null,
-    max_items: s.total_tweets,
-    sort_order: "Latest",
-  });
 
   const loadHistory = async () => {
     try {
@@ -67,20 +47,10 @@ const History = () => {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-
-      if (data && data.length > 0) {
-        setAnalyses(data);
-        setIsDemo(false);
-      } else {
-        // Fall back to sample analyses for demo
-        setAnalyses(SAMPLE_ANALYSES.map(sampleToSaved));
-        setIsDemo(true);
-      }
+      setAnalyses(data || []);
     } catch (error) {
       console.error('Error loading history:', error);
-      // On error, show sample data as demo
-      setAnalyses(SAMPLE_ANALYSES.map(sampleToSaved));
-      setIsDemo(true);
+      setAnalyses([]);
     } finally {
       setIsLoading(false);
     }
@@ -167,7 +137,7 @@ const History = () => {
         </div>
       ) : analyses.length === 0 ? (
         <div className="card-stagger rounded-2xl bg-card border border-border/40 p-12 text-center">
-          <Twitter className="h-12 w-12 mx-auto mb-4 text-muted-foreground/20" />
+          <Inbox className="h-12 w-12 mx-auto mb-4 text-muted-foreground/20" />
           <p className="text-lg font-bold text-foreground/70 mb-2">لا توجد تحليلات محفوظة</p>
           <p className="text-[12px] font-bold text-muted-foreground/40 mb-6">ابدأ بإنشاء تحليل جديد</p>
           <Button
@@ -177,13 +147,7 @@ const History = () => {
             إنشاء تحليل
           </Button>
         </div>
-      ) : (<>
-        {isDemo && (
-          <div className="card-stagger flex items-center gap-2.5 px-4 py-3 rounded-xl bg-thmanyah-amber/[0.06] border border-thmanyah-amber/15">
-            <FlaskConical className="w-4 h-4 text-thmanyah-amber shrink-0" />
-            <span className="text-[12px] font-bold text-foreground/60">بيانات تجريبية — قم بتشغيل تحليل حقيقي لتظهر نتائجك هنا</span>
-          </div>
-        )}
+      ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {analyses.map((analysis, i) => (
             <div
@@ -235,7 +199,7 @@ const History = () => {
             </div>
           ))}
         </div>
-      </>)}
+      )}
     </div>
   );
 };

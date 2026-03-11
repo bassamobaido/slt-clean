@@ -1,10 +1,30 @@
 import { useState } from "react";
-import { Search, Filter, Heart, MessageSquare, Share2, Eye, ChevronDown, ChevronUp, Link2, Send } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import {
+  Search,
+  Filter,
+  Heart,
+  MessageSquare,
+  Share2,
+  Eye,
+  ChevronDown,
+  ChevronUp,
+  ExternalLink,
+  Inbox,
+} from "lucide-react";
 import PageExplainer from "@/components/PageExplainer";
-import { ALL_SAMPLE_POSTS, type Platform } from "@/lib/sampleData";
+import { supabase } from "@/integrations/supabase/client";
+import type {
+  PostItem,
+  TikTokPostRow,
+  InstagramPostRow,
+  YouTubeDataRow,
+  XDataRow,
+  Platform,
+} from "@/lib/db-types";
+import { fmtNum, daysAgo, daysAgoDate } from "@/lib/db-types";
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
-import { useToast } from "@/hooks/use-toast";
 
 const PLATFORM_FILTERS: { key: Platform | "all"; label: string; color: string }[] = [
   { key: "all", label: "الكل", color: "#000" },
@@ -14,70 +34,215 @@ const PLATFORM_FILTERS: { key: Platform | "all"; label: string; color: string }[
   { key: "youtube", label: "YouTube", color: "#FF0000" },
 ];
 
+const PLATFORM_COLORS: Record<Platform, string> = {
+  x: "#1DA1F2",
+  tiktok: "#ff0050",
+  instagram: "#E4405F",
+  youtube: "#FF0000",
+};
+
+const PLATFORM_LABEL: Record<Platform, string> = {
+  x: "X",
+  tiktok: "TikTok",
+  instagram: "Instagram",
+  youtube: "YouTube",
+};
+
 const SENTIMENT_COLORS = {
   positive: { bg: "bg-thmanyah-green/[0.08]", text: "text-thmanyah-green", label: "إيجابي" },
   negative: { bg: "bg-thmanyah-red/[0.08]", text: "text-thmanyah-red", label: "سلبي" },
   neutral: { bg: "bg-muted/30", text: "text-muted-foreground", label: "محايد" },
 };
 
-const SENTIMENT_FILTERS = [
-  { key: "all" as const, label: "الكل" },
-  { key: "positive" as const, label: "إيجابي" },
-  { key: "negative" as const, label: "سلبي" },
-  { key: "neutral" as const, label: "محايد" },
-];
+function useExploreData(options: {
+  query: string;
+  platform: Platform | "all";
+  days: number;
+}) {
+  const { query, platform, days } = options;
 
-function fmt(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-  return n.toString();
+  return useQuery({
+    queryKey: ["explore", query, platform, days],
+    queryFn: async () => {
+      const since = daysAgo(days);
+      const sinceDate = daysAgoDate(days);
+      const limit = 30;
+
+      const results: PostItem[] = [];
+
+      // Fetch from each platform in parallel
+      const queries: Promise<void>[] = [];
+
+      if (platform === "all" || platform === "tiktok") {
+        queries.push(
+          (async () => {
+            let q = (supabase as any)
+              .from("tiktok_posts")
+              .select("*")
+              .gte("post_create_time", since)
+              .order("post_create_time", { ascending: false })
+              .limit(limit);
+            if (query) q = q.ilike("post_description", `%${query}%`);
+            const { data } = await q;
+            for (const p of (data || []) as TikTokPostRow[]) {
+              results.push({
+                id: `tt_${p.post_id}`,
+                text: p.post_description || "",
+                url: p.post_url || "",
+                createdAt: p.post_create_time || "",
+                likes: p.post_like_count || 0,
+                commentsCount: p.post_comment_count || 0,
+                shares: p.post_share_count || 0,
+                views: p.post_play_count || 0,
+                accountUsername: p.account_username || "",
+                accountNameAr: p.account_name_ar || "",
+                platform: "tiktok",
+              });
+            }
+          })()
+        );
+      }
+
+      if (platform === "all" || platform === "instagram") {
+        queries.push(
+          (async () => {
+            let q = (supabase as any)
+              .from("instagram_posts")
+              .select("*")
+              .gte("post_timestamp", since)
+              .order("post_timestamp", { ascending: false })
+              .limit(limit);
+            if (query) q = q.ilike("post_caption", `%${query}%`);
+            const { data } = await q;
+            for (const p of (data || []) as InstagramPostRow[]) {
+              results.push({
+                id: `ig_${p.post_id}`,
+                text: p.post_caption || "",
+                url: p.post_url || "",
+                createdAt: p.post_timestamp || "",
+                likes: p.post_likes_count || 0,
+                commentsCount: p.post_comments_count || 0,
+                shares: 0,
+                views: p.post_views_count || 0,
+                accountUsername: p.account_username || "",
+                accountNameAr: p.account_name_ar || "",
+                platform: "instagram",
+              });
+            }
+          })()
+        );
+      }
+
+      if (platform === "all" || platform === "youtube") {
+        queries.push(
+          (async () => {
+            let q = (supabase as any)
+              .from("youtube_data")
+              .select("video_id, video_title, video_url, video_view_count, video_like_count, video_comment_count, comment_published_at, account_name")
+              .gte("comment_published_at", since)
+              .order("comment_published_at", { ascending: false })
+              .limit(200);
+            if (query) q = q.ilike("video_title", `%${query}%`);
+            const { data } = await q;
+            // Deduplicate videos
+            const seen = new Set<string>();
+            for (const r of (data || []) as YouTubeDataRow[]) {
+              if (!r.video_id || seen.has(r.video_id)) continue;
+              seen.add(r.video_id);
+              results.push({
+                id: `yt_${r.video_id}`,
+                text: r.video_title || "",
+                url: r.video_url || "",
+                createdAt: r.comment_published_at || "",
+                likes: r.video_like_count || 0,
+                commentsCount: r.video_comment_count || 0,
+                shares: 0,
+                views: r.video_view_count || 0,
+                accountUsername: r.account_name || "",
+                accountNameAr: r.account_name || "",
+                platform: "youtube",
+              });
+              if (seen.size >= limit) break;
+            }
+          })()
+        );
+      }
+
+      if (platform === "all" || platform === "x") {
+        queries.push(
+          (async () => {
+            let q = (supabase as any)
+              .from("x_data")
+              .select("*")
+              .gte("date", sinceDate)
+              .order("date", { ascending: false })
+              .limit(limit);
+            if (query) q = q.ilike("hit_sentence", `%${query}%`);
+            const { data } = await q;
+            for (const p of (data || []) as XDataRow[]) {
+              results.push({
+                id: `x_${p.document_id}`,
+                text: p.hit_sentence || "",
+                url: p.url || "",
+                createdAt: p.date ? `${p.date}T${p.time || "00:00:00"}Z` : "",
+                likes: p.likes || 0,
+                commentsCount: p.comments || 0,
+                shares: p.reposts || 0,
+                views: p.views || 0,
+                accountUsername: p.author_handle || "",
+                accountNameAr: p.author_name || "",
+                platform: "x",
+                sentiment: p.sentiment || undefined,
+              });
+            }
+          })()
+        );
+      }
+
+      await Promise.all(queries);
+
+      // Sort by date descending
+      results.sort(
+        (a, b) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+
+      return results;
+    },
+    staleTime: 60_000,
+  });
 }
-
-const platformColor = (p: Platform) => PLATFORM_FILTERS.find((pf) => pf.key === p)?.color || "#666";
-const platformLabel = (p: Platform): string => ({ x: "X", tiktok: "TikTok", instagram: "Instagram", youtube: "YouTube" })[p];
 
 export default function Explore() {
   const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [platformFilter, setPlatformFilter] = useState<Platform | "all">("all");
-  const [sentimentFilter, setSentimentFilter] = useState<"all" | "positive" | "negative" | "neutral">("all");
+  const [days, setDays] = useState(30);
   const [expandedPost, setExpandedPost] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
-  const [comments, setComments] = useState<Record<string, string[]>>({});
-  const [commentInputs, setCommentInputs] = useState<Record<string, string>>({});
-  const { toast } = useToast();
 
-  const handleAddComment = (postId: string) => {
-    const text = (commentInputs[postId] || "").trim();
-    if (!text) return;
-    setComments((prev) => ({ ...prev, [postId]: [...(prev[postId] || []), text] }));
-    setCommentInputs((prev) => ({ ...prev, [postId]: "" }));
+  // Simple debounce
+  const [timer, setTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
+  const handleQueryChange = (val: string) => {
+    setQuery(val);
+    if (timer) clearTimeout(timer);
+    setTimer(setTimeout(() => setDebouncedQuery(val), 400));
   };
 
-  const handleCopyLink = (postId: string) => {
-    const url = `${window.location.origin}/explore?post=${postId}`;
-    navigator.clipboard.writeText(url).then(() => {
-      toast({ title: "تم نسخ الرابط", description: "تم نسخ رابط المنشور إلى الحافظة" });
-    });
-  };
+  const { data: posts = [], isLoading } = useExploreData({
+    query: debouncedQuery,
+    platform: platformFilter,
+    days,
+  });
 
-  const filtered = ALL_SAMPLE_POSTS.filter((p) => {
-    if (platformFilter !== "all" && p.platform !== platformFilter) return false;
-    if (sentimentFilter !== "all" && p.sentiment !== sentimentFilter) return false;
-    if (query.trim()) {
-      const q = query.trim().toLowerCase();
-      return p.text.toLowerCase().includes(q) || p.authorName.toLowerCase().includes(q) || p.keywords.some((k) => k.includes(q));
-    }
-    return true;
-  }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-
-  const visible = showAll ? filtered : filtered.slice(0, 15);
+  const visible = showAll ? posts : posts.slice(0, 20);
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
       <PageExplainer
         icon={Search}
         title="استكشاف البيانات"
-        description="ابحث وتصفّح جميع الإشارات والتعليقات عبر المنصات المختلفة مع فلاتر متقدمة حسب المنصة والمشاعر والموضوع"
+        description="ابحث وتصفّح جميع المنشورات والتعليقات عبر المنصات المختلفة — بيانات حية من قاعدة البيانات"
         color="#FFBC0A"
       />
 
@@ -88,15 +253,15 @@ export default function Explore() {
           <input
             type="text"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="ابحث في الإشارات والتعليقات..."
+            onChange={(e) => handleQueryChange(e.target.value)}
+            placeholder="ابحث في المنشورات والتعليقات..."
             className="w-full py-3.5 pr-11 pl-4 rounded-xl bg-card border border-border/50 text-sm font-bold text-foreground/80 placeholder:text-muted-foreground/30 placeholder:font-bold focus:outline-none focus:ring-2 focus:ring-thmanyah-green/20 focus:border-thmanyah-green/30 transition-all"
           />
         </div>
       </div>
 
       {/* Filters */}
-      <div className="card-stagger flex flex-wrap gap-2" style={{ animationDelay: "0.05s" }}>
+      <div className="card-stagger flex flex-wrap items-center gap-2" style={{ animationDelay: "0.05s" }}>
         {PLATFORM_FILTERS.map((pf) => (
           <button
             key={pf.key}
@@ -111,151 +276,190 @@ export default function Explore() {
             {pf.label}
           </button>
         ))}
-        <div className="w-px h-6 bg-border/40 mx-1 self-center" />
-        {SENTIMENT_FILTERS.map((sf) => (
+        <div className="w-px h-6 bg-border/40 mx-1" />
+        {[
+          { v: 7, l: "٧ أيام" },
+          { v: 30, l: "٣٠ يوم" },
+          { v: 90, l: "٩٠ يوم" },
+        ].map((opt) => (
           <button
-            key={sf.key}
-            onClick={() => setSentimentFilter(sf.key)}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold transition-all ${
-              sentimentFilter === sf.key
+            key={opt.v}
+            onClick={() => setDays(opt.v)}
+            className={`px-3 py-1.5 rounded-full text-[11px] font-bold transition-all ${
+              days === opt.v
                 ? "bg-foreground text-white"
-                : "bg-card border border-border/50 text-muted-foreground/60 hover:text-foreground hover:border-border"
+                : "bg-card border border-border/50 text-muted-foreground/60 hover:text-foreground"
             }`}
           >
-            {sf.label}
+            {opt.l}
           </button>
         ))}
       </div>
 
       {/* Results Count */}
       <div className="card-stagger flex items-center gap-3" style={{ animationDelay: "0.1s" }}>
-        <span className="text-[12px] font-bold text-muted-foreground/50 nums-en">{filtered.length} نتيجة</span>
+        <span className="text-[12px] font-bold text-muted-foreground/50 nums-en">
+          {posts.length} نتيجة
+        </span>
         <div className="flex-1 h-px bg-border/40" />
-        <span className="text-[10px] font-bold text-muted-foreground/40">بيانات تجريبية</span>
       </div>
 
-      {/* Posts Feed */}
-      {filtered.length === 0 ? (
+      {/* Loading */}
+      {isLoading ? (
+        <div className="space-y-3">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div
+              key={i}
+              className="rounded-2xl bg-card border border-border/40 p-4 space-y-3 animate-pulse"
+            >
+              <div className="h-4 w-3/4 bg-muted/30 rounded" />
+              <div className="h-3 w-1/2 bg-muted/20 rounded" />
+            </div>
+          ))}
+        </div>
+      ) : posts.length === 0 ? (
         <div className="card-stagger text-center py-16">
-          <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-muted/50 flex items-center justify-center">
-            <Search className="w-6 h-6 text-muted-foreground/30" />
-          </div>
-          <h3 className="text-base font-display font-bold text-foreground/60 mb-1.5">لا توجد نتائج</h3>
-          <p className="text-[12px] font-bold text-muted-foreground/40">جرّب تغيير كلمات البحث أو الفلاتر</p>
+          <Inbox className="w-12 h-12 mx-auto mb-4 text-muted-foreground/20" />
+          <h3 className="text-base font-display font-bold text-foreground/60 mb-1.5">
+            لا توجد نتائج
+          </h3>
+          <p className="text-[12px] font-bold text-muted-foreground/40">
+            جرّب تغيير كلمات البحث أو الفلاتر
+          </p>
         </div>
       ) : (
         <div className="space-y-2.5">
           {visible.map((post, i) => {
-            const sc = SENTIMENT_COLORS[post.sentiment];
             const isOpen = expandedPost === post.id;
-            const color = platformColor(post.platform);
+            const color = PLATFORM_COLORS[post.platform];
+            const sentimentKey =
+              post.sentiment === "Positive" || post.sentiment === "إيجابي"
+                ? "positive"
+                : post.sentiment === "Negative" || post.sentiment === "سلبي"
+                ? "negative"
+                : post.sentiment
+                ? "neutral"
+                : null;
+
             return (
-              <div key={post.id} className="card-stagger rounded-2xl bg-card border border-border/40 overflow-hidden" style={{ animationDelay: `${0.12 + i * 0.03}s` }}>
-                <button onClick={() => setExpandedPost(isOpen ? null : post.id)} className="w-full text-right p-4 hover:bg-muted/5 transition-colors">
+              <div
+                key={post.id}
+                className="card-stagger rounded-2xl bg-card border border-border/40 overflow-hidden"
+                style={{ animationDelay: `${0.12 + i * 0.02}s` }}
+              >
+                <button
+                  onClick={() => setExpandedPost(isOpen ? null : post.id)}
+                  className="w-full text-right p-4 hover:bg-muted/5 transition-colors"
+                >
                   <div className="flex items-start gap-3">
-                    <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-[11px] font-bold shrink-0" style={{ backgroundColor: color }}>
-                      {post.authorAvatar}
+                    <div
+                      className="w-9 h-9 rounded-full flex items-center justify-center text-white text-[11px] font-bold shrink-0"
+                      style={{ backgroundColor: color }}
+                    >
+                      {(post.accountNameAr || post.authorName || "?").charAt(0)}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1 flex-wrap">
-                        <span className="text-[12px] font-bold text-foreground/80">{post.authorName}</span>
-                        {post.authorVerified && (
-                          <svg className="w-3.5 h-3.5 text-thmanyah-blue shrink-0" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" /></svg>
+                        <span className="text-[12px] font-bold text-foreground/80">
+                          {post.accountNameAr || post.authorName || "—"}
+                        </span>
+                        <span
+                          className="px-1.5 py-0.5 rounded text-[9px] font-bold"
+                          style={{ backgroundColor: `${color}10`, color }}
+                        >
+                          {PLATFORM_LABEL[post.platform]}
+                        </span>
+                        {sentimentKey && (
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${SENTIMENT_COLORS[sentimentKey].bg} ${SENTIMENT_COLORS[sentimentKey].text}`}
+                          >
+                            {SENTIMENT_COLORS[sentimentKey].label}
+                          </span>
                         )}
-                        <span className="text-[10px] font-bold text-muted-foreground/30 nums-en" dir="ltr">@{post.author}</span>
-                        <span className="px-1.5 py-0.5 rounded text-[9px] font-bold" style={{ backgroundColor: `${color}10`, color }}>{platformLabel(post.platform)}</span>
-                        <span className="text-[10px] font-bold text-muted-foreground/30 mr-auto">{format(new Date(post.createdAt), "d MMM", { locale: ar })}</span>
+                        <span className="text-[10px] font-bold text-muted-foreground/30 mr-auto">
+                          {post.createdAt
+                            ? (() => {
+                                try {
+                                  return format(new Date(post.createdAt), "d MMM", { locale: ar });
+                                } catch {
+                                  return post.createdAt.split("T")[0];
+                                }
+                              })()
+                            : ""}
+                        </span>
                       </div>
-                      <p className="text-[12px] font-bold text-foreground/70 leading-relaxed line-clamp-2">{post.text}</p>
+                      <p className="text-[12px] font-bold text-foreground/70 leading-relaxed line-clamp-2">
+                        {post.text || "—"}
+                      </p>
                       <div className="flex items-center gap-4 mt-2">
-                        <span className="flex items-center gap-1 text-[10px] font-bold text-muted-foreground/40 nums-en"><Heart className="w-3 h-3" /> {fmt(post.likes)}</span>
-                        <span className="flex items-center gap-1 text-[10px] font-bold text-muted-foreground/40 nums-en"><MessageSquare className="w-3 h-3" /> {fmt(post.comments)}</span>
-                        <span className="flex items-center gap-1 text-[10px] font-bold text-muted-foreground/40 nums-en"><Share2 className="w-3 h-3" /> {fmt(post.shares)}</span>
-                        {post.views !== undefined && post.views > 0 && (
-                          <span className="flex items-center gap-1 text-[10px] font-bold text-muted-foreground/40 nums-en"><Eye className="w-3 h-3" /> {fmt(post.views)}</span>
+                        <span className="flex items-center gap-1 text-[10px] font-bold text-muted-foreground/40 nums-en">
+                          <Heart className="w-3 h-3" /> {fmtNum(post.likes)}
+                        </span>
+                        <span className="flex items-center gap-1 text-[10px] font-bold text-muted-foreground/40 nums-en">
+                          <MessageSquare className="w-3 h-3" /> {fmtNum(post.commentsCount)}
+                        </span>
+                        {post.shares > 0 && (
+                          <span className="flex items-center gap-1 text-[10px] font-bold text-muted-foreground/40 nums-en">
+                            <Share2 className="w-3 h-3" /> {fmtNum(post.shares)}
+                          </span>
+                        )}
+                        {post.views > 0 && (
+                          <span className="flex items-center gap-1 text-[10px] font-bold text-muted-foreground/40 nums-en">
+                            <Eye className="w-3 h-3" /> {fmtNum(post.views)}
+                          </span>
                         )}
                       </div>
                     </div>
-                    <div className="flex flex-col items-end gap-1.5 shrink-0">
-                      <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${sc.bg} ${sc.text}`}>{sc.label}</span>
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleCopyLink(post.id); }}
-                          className="p-1 rounded-md hover:bg-muted/20 transition-colors"
-                          title="نسخ الرابط"
-                        >
-                          <Link2 className="w-3.5 h-3.5 text-muted-foreground/30 hover:text-thmanyah-blue transition-colors" />
-                        </button>
-                        {isOpen ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground/30" /> : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground/20" />}
-                      </div>
+                    <div className="shrink-0">
+                      {isOpen ? (
+                        <ChevronUp className="w-3.5 h-3.5 text-muted-foreground/30" />
+                      ) : (
+                        <ChevronDown className="w-3.5 h-3.5 text-muted-foreground/20" />
+                      )}
                     </div>
                   </div>
                 </button>
 
                 {isOpen && (
                   <div className="border-t border-border/30 p-4 bg-muted/5 space-y-3">
+                    <p className="text-[12px] font-bold text-foreground/70 leading-relaxed whitespace-pre-wrap">
+                      {post.text}
+                    </p>
+                    {post.url && (
+                      <a
+                        href={post.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 text-[11px] font-bold text-thmanyah-blue hover:underline"
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                        عرض المنشور الأصلي
+                      </a>
+                    )}
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                       <div className="p-2.5 rounded-lg bg-card border border-border/30">
-                        <div className="text-[10px] font-bold text-muted-foreground/40 mb-0.5">المشاعر</div>
-                        <div className={`text-[12px] font-bold ${sc.text}`}>{sc.label}</div>
-                      </div>
-                      <div className="p-2.5 rounded-lg bg-card border border-border/30">
-                        <div className="text-[10px] font-bold text-muted-foreground/40 mb-0.5">الثقة</div>
-                        <div className="text-[12px] font-bold text-foreground/80 nums-en">{Math.round(post.confidence * 100)}%</div>
-                      </div>
-                      <div className="p-2.5 rounded-lg bg-card border border-border/30">
-                        <div className="text-[10px] font-bold text-muted-foreground/40 mb-0.5">العاطفة</div>
-                        <div className="text-[12px] font-bold text-foreground/80">{post.emotion}</div>
-                      </div>
-                      <div className="p-2.5 rounded-lg bg-card border border-border/30">
                         <div className="text-[10px] font-bold text-muted-foreground/40 mb-0.5">المنصة</div>
-                        <div className="text-[12px] font-bold" style={{ color }}>{platformLabel(post.platform)}</div>
-                      </div>
-                    </div>
-                    <div className="p-2.5 rounded-lg bg-card border border-border/30">
-                      <div className="text-[10px] font-bold text-muted-foreground/40 mb-1">سبب التصنيف</div>
-                      <p className="text-[11px] font-bold text-foreground/70 leading-relaxed">{post.reason}</p>
-                    </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {post.keywords.map((kw) => (
-                        <span key={kw} className="px-2 py-0.5 rounded-full bg-muted/30 text-[9px] font-bold text-muted-foreground/60">{kw}</span>
-                      ))}
-                    </div>
-
-                    {/* ── Comment Section ── */}
-                    <div className="border-t border-border/20 pt-3 mt-1">
-                      <div className="text-[10px] font-bold text-muted-foreground/40 mb-2">التعليقات</div>
-                      {(comments[post.id] || []).length > 0 && (
-                        <div className="space-y-1.5 mb-2.5">
-                          {(comments[post.id] || []).map((c, ci) => (
-                            <div key={ci} className="flex items-start gap-2 p-2 rounded-lg bg-card border border-border/20">
-                              <div className="w-5 h-5 rounded-full bg-thmanyah-green/10 flex items-center justify-center shrink-0">
-                                <span className="text-[8px] font-bold text-thmanyah-green">أ</span>
-                              </div>
-                              <div>
-                                <span className="text-[9px] font-bold text-muted-foreground/40">أنت</span>
-                                <p className="text-[11px] font-bold text-foreground/70">{c}</p>
-                              </div>
-                            </div>
-                          ))}
+                        <div className="text-[12px] font-bold" style={{ color }}>
+                          {PLATFORM_LABEL[post.platform]}
                         </div>
-                      )}
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="text"
-                          value={commentInputs[post.id] || ""}
-                          onChange={(e) => setCommentInputs((prev) => ({ ...prev, [post.id]: e.target.value }))}
-                          onKeyDown={(e) => { if (e.key === "Enter") handleAddComment(post.id); }}
-                          placeholder="أضف تعليقاً..."
-                          className="flex-1 py-2 px-3 rounded-lg bg-card border border-border/30 text-[11px] font-bold text-foreground/80 placeholder:text-muted-foreground/25 placeholder:font-bold focus:outline-none focus:ring-1 focus:ring-thmanyah-green/20 focus:border-thmanyah-green/30 transition-all"
-                          onClick={(e) => e.stopPropagation()}
-                        />
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleAddComment(post.id); }}
-                          className="p-2 rounded-lg bg-thmanyah-green/10 border border-thmanyah-green/20 hover:bg-thmanyah-green/20 transition-colors"
-                        >
-                          <Send className="w-3.5 h-3.5 text-thmanyah-green" />
-                        </button>
+                      </div>
+                      <div className="p-2.5 rounded-lg bg-card border border-border/30">
+                        <div className="text-[10px] font-bold text-muted-foreground/40 mb-0.5">الحساب</div>
+                        <div className="text-[12px] font-bold text-foreground/80 truncate">
+                          {post.accountNameAr || "—"}
+                        </div>
+                      </div>
+                      <div className="p-2.5 rounded-lg bg-card border border-border/30">
+                        <div className="text-[10px] font-bold text-muted-foreground/40 mb-0.5">الإعجابات</div>
+                        <div className="text-[12px] font-bold text-foreground/80 nums-en">
+                          {fmtNum(post.likes)}
+                        </div>
+                      </div>
+                      <div className="p-2.5 rounded-lg bg-card border border-border/30">
+                        <div className="text-[10px] font-bold text-muted-foreground/40 mb-0.5">المشاهدات</div>
+                        <div className="text-[12px] font-bold text-foreground/80 nums-en">
+                          {fmtNum(post.views)}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -266,9 +470,20 @@ export default function Explore() {
         </div>
       )}
 
-      {filtered.length > 15 && (
-        <button onClick={() => setShowAll(!showAll)} className="mt-3 w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl border border-border/40 text-[12px] font-bold text-muted-foreground/50 hover:text-foreground hover:border-border transition-all">
-          {showAll ? <><ChevronUp className="w-3.5 h-3.5" /> عرض أقل</> : <><ChevronDown className="w-3.5 h-3.5" /> عرض جميع النتائج ({filtered.length})</>}
+      {posts.length > 20 && (
+        <button
+          onClick={() => setShowAll(!showAll)}
+          className="mt-3 w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl border border-border/40 text-[12px] font-bold text-muted-foreground/50 hover:text-foreground hover:border-border transition-all"
+        >
+          {showAll ? (
+            <>
+              <ChevronUp className="w-3.5 h-3.5" /> عرض أقل
+            </>
+          ) : (
+            <>
+              <ChevronDown className="w-3.5 h-3.5" /> عرض جميع النتائج ({posts.length})
+            </>
+          )}
         </button>
       )}
     </div>
