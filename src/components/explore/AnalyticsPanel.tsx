@@ -6,6 +6,8 @@ import { MessageSquare, Eye, Heart, TrendingUp } from "lucide-react";
 import type { PlatformStats, ChartPoint, TopPost, AccountCount, DrawerFilter, Platform } from "@/lib/db-types";
 import { fmtNum, PLATFORM_COLORS } from "@/lib/db-types";
 import WordCloud from "./WordCloud";
+import ProductChart from "./ProductChart";
+import type { ProductMention } from "@/hooks/useProductMentions";
 
 /* ── Skeleton ── */
 function Skeleton({ className = "" }: { className?: string }) {
@@ -63,12 +65,16 @@ interface Props {
   commentTexts?: string[];
   commentTextsLoading?: boolean;
   onWordClick?: (word: string) => void;
+  productMentions?: ProductMention[];
+  productMentionsLoading?: boolean;
+  onProductClick?: (textTerm: string, productName: string) => void;
 }
 
 export default function AnalyticsPanel({
   platform, stats, commentsPerDay, topPosts, postsPerDay,
   commentsPerAccount, isLoading, showAccountPie, onChartClick,
   commentTexts, commentTextsLoading, onWordClick,
+  productMentions, productMentionsLoading, onProductClick,
 }: Props) {
   const color = PLATFORM_COLORS[platform];
 
@@ -263,6 +269,14 @@ export default function AnalyticsPanel({
         texts={commentTexts || []}
         isLoading={commentTextsLoading || false}
         onWordClick={onWordClick}
+      />
+
+      {/* Product Mentions */}
+      <ProductChart
+        data={productMentions}
+        isLoading={productMentionsLoading || false}
+        title="المنتجات"
+        onProductClick={onProductClick}
       />
     </div>
   );

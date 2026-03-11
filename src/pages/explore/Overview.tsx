@@ -11,7 +11,9 @@ import { fmtNum, PLATFORM_COLORS, PLATFORM_LABELS, type Platform } from "@/lib/d
 import { PLATFORM_ICON_MAP } from "@/components/icons/PlatformIcons";
 import PageExplainer from "@/components/PageExplainer";
 import WordCloud from "@/components/explore/WordCloud";
+import ProductChart from "@/components/explore/ProductChart";
 import { useAllCommentTexts } from "@/hooks/useCommentTexts";
+import { useProductMentions } from "@/hooks/useProductMentions";
 
 function Skeleton({ className = "" }: { className?: string }) {
   return <div className={`animate-pulse rounded-lg bg-muted/20 ${className}`} />;
@@ -22,6 +24,9 @@ export default function Overview() {
   const { dateRange } = useDateRange();
   const { data, isLoading } = useOverviewData(dateRange.from, dateRange.to);
   const { data: allTexts, isLoading: textsLoading } = useAllCommentTexts(dateRange.from, dateRange.to);
+  const { data: productMentions, isLoading: productsLoading } = useProductMentions({
+    platform: "all", dateFrom: dateRange.from, dateTo: dateRange.to,
+  });
 
   const platformCards: { key: Platform; path: string }[] = [
     { key: "tiktok", path: "/explore/tiktok" },
@@ -116,6 +121,13 @@ export default function Overview() {
           })}
         </div>
       </div>
+
+      {/* Product Mentions */}
+      <ProductChart
+        data={productMentions}
+        isLoading={productsLoading}
+        title="تفاعل منتجات ثمانية"
+      />
 
       {/* Activity Timeline */}
       {data && data.timeline.length > 0 && (

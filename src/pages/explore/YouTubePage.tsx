@@ -13,6 +13,7 @@ import type { DrawerFilter } from "@/lib/db-types";
 import { YOUTUBE_ACCOUNTS } from "@/lib/db-types";
 import { YouTubeIcon } from "@/components/icons/PlatformIcons";
 import { useCommentTexts } from "@/hooks/useCommentTexts";
+import { useProductMentions } from "@/hooks/useProductMentions";
 
 export default function YouTubePage() {
   const { dateRange } = useDateRange();
@@ -48,6 +49,11 @@ export default function YouTubePage() {
 
   // Comment texts for word cloud
   const { data: commentTexts, isLoading: commentTextsLoading } = useCommentTexts({
+    platform: "youtube", account: qOpts.account, dateFrom: qOpts.dateFrom, dateTo: qOpts.dateTo,
+  });
+
+  // Product mentions
+  const { data: productMentions, isLoading: productMentionsLoading } = useProductMentions({
     platform: "youtube", account: qOpts.account, dateFrom: qOpts.dateFrom, dateTo: qOpts.dateTo,
   });
 
@@ -89,6 +95,8 @@ export default function YouTubePage() {
       onDrawerFilterChange={setDrawerFilter}
       commentTexts={commentTexts}
       commentTextsLoading={commentTextsLoading}
+      productMentions={productMentions}
+      productMentionsLoading={productMentionsLoading}
     />
   );
 }

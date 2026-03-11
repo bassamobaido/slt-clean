@@ -14,6 +14,7 @@ import type { DrawerFilter } from "@/lib/db-types";
 import { TIKTOK_ACCOUNTS } from "@/lib/db-types";
 import { TikTokIcon } from "@/components/icons/PlatformIcons";
 import { useCommentTexts } from "@/hooks/useCommentTexts";
+import { useProductMentions } from "@/hooks/useProductMentions";
 
 export default function TikTokPage() {
   const { dateRange } = useDateRange();
@@ -57,6 +58,11 @@ export default function TikTokPage() {
     platform: "tiktok", account: qOpts.account, dateFrom: qOpts.dateFrom, dateTo: qOpts.dateTo,
   });
 
+  // Product mentions
+  const { data: productMentions, isLoading: productMentionsLoading } = useProductMentions({
+    platform: "tiktok", account: qOpts.account, dateFrom: qOpts.dateFrom, dateTo: qOpts.dateTo,
+  });
+
   // Drawer comments
   const drawerQ = useTikTokComments({
     ...qOpts,
@@ -96,6 +102,8 @@ export default function TikTokPage() {
       onDrawerFilterChange={setDrawerFilter}
       commentTexts={commentTexts}
       commentTextsLoading={commentTextsLoading}
+      productMentions={productMentions}
+      productMentionsLoading={productMentionsLoading}
     />
   );
 }

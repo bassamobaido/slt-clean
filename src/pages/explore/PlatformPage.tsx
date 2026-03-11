@@ -10,6 +10,7 @@ import type {
   ChartPoint, TopPost, AccountCount,
   EnrichedComment, DrawerFilter,
 } from "@/lib/db-types";
+import type { ProductMention } from "@/hooks/useProductMentions";
 import { PLATFORM_LABELS, PLATFORM_COLORS } from "@/lib/db-types";
 import { getAccountAvatar } from "@/lib/accountAvatars";
 
@@ -50,6 +51,9 @@ interface PlatformPageProps {
   /* Word Cloud */
   commentTexts?: string[];
   commentTextsLoading?: boolean;
+  /* Product Mentions */
+  productMentions?: ProductMention[];
+  productMentionsLoading?: boolean;
 }
 
 export default function PlatformPage({
@@ -60,6 +64,7 @@ export default function PlatformPage({
   account, onAccountChange, search, onSearchChange, sort, onSortChange,
   drawerComments, drawerLoading, drawerFilter, onDrawerFilterChange,
   commentTexts, commentTextsLoading,
+  productMentions, productMentionsLoading,
 }: PlatformPageProps) {
   const color = PLATFORM_COLORS[platform];
   const allComments = useMemo(
@@ -140,6 +145,9 @@ export default function PlatformPage({
             commentTexts={commentTexts}
             commentTextsLoading={commentTextsLoading}
             onWordClick={(word) => onDrawerFilterChange({ type: "word", word, label: `كلمة: ${word}` })}
+            productMentions={productMentions}
+            productMentionsLoading={productMentionsLoading}
+            onProductClick={(term, name) => onDrawerFilterChange({ type: "word", word: term, label: `منتج: ${name}` })}
           />
         </div>
 

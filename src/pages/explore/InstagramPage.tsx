@@ -14,6 +14,7 @@ import type { DrawerFilter } from "@/lib/db-types";
 import { INSTAGRAM_ACCOUNTS } from "@/lib/db-types";
 import { InstagramIcon } from "@/components/icons/PlatformIcons";
 import { useCommentTexts } from "@/hooks/useCommentTexts";
+import { useProductMentions } from "@/hooks/useProductMentions";
 
 export default function InstagramPage() {
   const { dateRange } = useDateRange();
@@ -50,6 +51,11 @@ export default function InstagramPage() {
 
   // Comment texts for word cloud
   const { data: commentTexts, isLoading: commentTextsLoading } = useCommentTexts({
+    platform: "instagram", account: qOpts.account, dateFrom: qOpts.dateFrom, dateTo: qOpts.dateTo,
+  });
+
+  // Product mentions
+  const { data: productMentions, isLoading: productMentionsLoading } = useProductMentions({
     platform: "instagram", account: qOpts.account, dateFrom: qOpts.dateFrom, dateTo: qOpts.dateTo,
   });
 
@@ -91,6 +97,8 @@ export default function InstagramPage() {
       onDrawerFilterChange={setDrawerFilter}
       commentTexts={commentTexts}
       commentTextsLoading={commentTextsLoading}
+      productMentions={productMentions}
+      productMentionsLoading={productMentionsLoading}
     />
   );
 }
