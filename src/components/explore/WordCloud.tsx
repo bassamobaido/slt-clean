@@ -1,4 +1,4 @@
-import { useMemo, useState, useRef, useLayoutEffect } from "react";
+import { useMemo, useState, useRef, useLayoutEffect, useEffect } from "react";
 import { Cloud } from "lucide-react";
 
 /* ── Arabic Stop Words (expanded with Gulf dialect, media terms) ── */
@@ -251,17 +251,34 @@ export default function WordCloud({ texts, isLoading, onWordClick }: Props) {
 
   const words = useMemo(() => analyzeComments(texts), [texts]);
 
-  // Measure container width
+  // Measure container width — read synchronously first, then observe
   useLayoutEffect(() => {
     if (!containerRef.current) return;
+    // Synchronous initial measurement
+    const w = containerRef.current.getBoundingClientRect().width;
+    if (w > 0) setContainerWidth(w);
+
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
-        setContainerWidth(entry.contentRect.width);
+        const newW = entry.contentRect.width;
+        if (newW > 0) setContainerWidth(newW);
       }
     });
     observer.observe(containerRef.current);
     return () => observer.disconnect();
   }, [expanded]);
+
+  // Fallback: if still 0 after mount, retry after a frame
+  useEffect(() => {
+    if (containerWidth > 0 || !containerRef.current) return;
+    const id = requestAnimationFrame(() => {
+      if (containerRef.current) {
+        const w = containerRef.current.getBoundingClientRect().width;
+        if (w > 0) setContainerWidth(w);
+      }
+    });
+    return () => cancelAnimationFrame(id);
+  }, [containerWidth, expanded]);
 
   const placedWords = useMemo(
     () => computeLayout(words, containerWidth, CONTAINER_HEIGHT),

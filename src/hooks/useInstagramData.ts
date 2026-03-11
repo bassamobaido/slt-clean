@@ -90,16 +90,16 @@ export function useInstagramComments(opts: CommentOpts) {
       if (error) throw error;
       const rows = (comments || []) as InstagramCommentRow[];
 
-      // Batch-fetch parent post info
+      // Batch-fetch parent post info (including thumbnail)
       const postIds = [...new Set(rows.map((c) => c.post_id).filter(Boolean))] as string[];
-      const postMap = new Map<string, { text: string; url: string }>();
+      const postMap = new Map<string, { text: string; url: string; thumbnail: string }>();
       if (postIds.length > 0) {
         const { data: posts } = await (supabase as any)
           .from("instagram_posts")
-          .select("post_id, post_caption, post_url")
+          .select("post_id, post_caption, post_url, post_image_url")
           .in("post_id", postIds);
         for (const p of posts || []) {
-          postMap.set(p.post_id, { text: p.post_caption || "", url: p.post_url || "" });
+          postMap.set(p.post_id, { text: p.post_caption || "", url: p.post_url || "", thumbnail: p.post_image_url || "" });
         }
       }
 
@@ -116,6 +116,7 @@ export function useInstagramComments(opts: CommentOpts) {
         parentPostId: c.post_id || undefined,
         parentPostText: postMap.get(c.post_id || "")?.text,
         parentPostUrl: postMap.get(c.post_id || "")?.url,
+        parentPostThumbnail: postMap.get(c.post_id || "")?.thumbnail || undefined,
         platform: "instagram" as const,
       }));
 

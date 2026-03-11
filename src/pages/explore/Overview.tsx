@@ -72,7 +72,7 @@ export default function Overview() {
         <h3 className="text-[14px] font-display font-bold text-foreground/70 mb-3">حسب المنصة</h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {platformCards.map(({ key, path }) => {
-            const pStats = data?.platforms?.[key as keyof typeof data.platforms];
+            const pStats = data?.[key as "tiktok" | "instagram" | "youtube"];
             const color = PLATFORM_COLORS[key];
             return (
               <button

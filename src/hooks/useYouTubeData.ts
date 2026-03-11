@@ -102,6 +102,7 @@ export function useYouTubeComments(opts: CommentOpts) {
         parentPostId: c.video_id || undefined,
         parentPostText: c.video_title || undefined,
         parentPostUrl: c.video_url || undefined,
+        parentPostThumbnail: c.video_thumbnail_url || undefined,
         platform: "youtube" as const,
       }));
 

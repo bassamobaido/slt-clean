@@ -120,6 +120,7 @@ export interface EnrichedComment {
   parentPostId?: string;
   parentPostText?: string;
   parentPostUrl?: string;
+  parentPostThumbnail?: string;
   platform: Platform;
 }
 

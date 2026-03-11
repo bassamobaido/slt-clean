@@ -1,8 +1,9 @@
-import { Heart, CornerDownLeft, ExternalLink } from "lucide-react";
+import { Heart, CornerDownLeft, ExternalLink, Play } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { ar } from "date-fns/locale";
 import type { EnrichedComment } from "@/lib/db-types";
 import { PLATFORM_COLORS } from "@/lib/db-types";
+import { PLATFORM_ICON_MAP } from "@/components/icons/PlatformIcons";
 
 function relativeTime(iso: string): string {
   try {
@@ -15,10 +16,45 @@ function relativeTime(iso: string): string {
 export default function CommentCard({ comment }: { comment: EnrichedComment }) {
   const c = comment;
   const platformColor = PLATFORM_COLORS[c.platform];
+  const hasThumbnail = !!c.parentPostThumbnail;
+  const PlatformIcon = PLATFORM_ICON_MAP[c.platform];
 
   return (
     <div className="group rounded-xl bg-card border border-border/40 p-4 hover:border-border/60 transition-colors">
       <div className="flex gap-3">
+        {/* Post Thumbnail (Instagram/YouTube) or platform icon placeholder */}
+        {(hasThumbnail || c.platform === "tiktok") && c.parentPostId && (
+          <a
+            href={c.parentPostUrl || "#"}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="shrink-0 block"
+          >
+            {hasThumbnail ? (
+              <div className="relative w-10 h-10 rounded-lg overflow-hidden bg-muted/20">
+                <img
+                  src={c.parentPostThumbnail}
+                  alt=""
+                  className="w-full h-full object-cover"
+                  loading="lazy"
+                />
+                {c.platform === "youtube" && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+                    <Play className="w-3.5 h-3.5 text-white fill-white" />
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div
+                className="w-10 h-10 rounded-lg flex items-center justify-center"
+                style={{ backgroundColor: platformColor + "15" }}
+              >
+                {PlatformIcon && <PlatformIcon className="w-4 h-4" style={{ color: platformColor }} />}
+              </div>
+            )}
+          </a>
+        )}
+
         {/* Avatar */}
         <div className="shrink-0">
           {c.authorAvatar ? (
@@ -77,7 +113,7 @@ export default function CommentCard({ comment }: { comment: EnrichedComment }) {
                 <span dir="ltr">{c.replyCount}</span> رد
               </span>
             )}
-            {c.parentPostText && (
+            {c.parentPostText && !hasThumbnail && (
               <a
                 href={c.parentPostUrl || "#"}
                 target="_blank"
