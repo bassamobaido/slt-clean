@@ -1,4 +1,4 @@
-import { useQuery, useInfiniteQuery } from "@tanstack/react-query";
+import { useQuery, useInfiniteQuery, keepPreviousData } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import type {
   TikTokCommentRow,
@@ -30,6 +30,9 @@ export function useTikTokStats(opts: QueryOpts) {
       return data as PlatformStats;
     },
     staleTime: 5 * 60_000,
+    gcTime: 30 * 60_000,
+    refetchOnWindowFocus: false,
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -126,6 +129,8 @@ export function useTikTokComments(opts: CommentOpts) {
     getNextPageParam: (last) =>
       (last.page + 1) * 100 < last.total ? last.page + 1 : undefined,
     staleTime: 60_000,
+    gcTime: 30 * 60_000,
+    refetchOnWindowFocus: false,
   });
 }
 
@@ -144,6 +149,9 @@ export function useTikTokCommentsPerDay(opts: QueryOpts) {
       return (data || []) as ChartPoint[];
     },
     staleTime: 5 * 60_000,
+    gcTime: 30 * 60_000,
+    refetchOnWindowFocus: false,
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -174,6 +182,9 @@ export function useTikTokTopPosts(opts: QueryOpts & { limit?: number }) {
       }));
     },
     staleTime: 5 * 60_000,
+    gcTime: 30 * 60_000,
+    refetchOnWindowFocus: false,
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -192,6 +203,9 @@ export function useTikTokPostsPerDay(opts: QueryOpts) {
       return (data || []) as ChartPoint[];
     },
     staleTime: 5 * 60_000,
+    gcTime: 30 * 60_000,
+    refetchOnWindowFocus: false,
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -213,5 +227,8 @@ export function useTikTokCommentsPerAccount(opts: { dateFrom?: string; dateTo?: 
       }));
     },
     staleTime: 5 * 60_000,
+    gcTime: 30 * 60_000,
+    refetchOnWindowFocus: false,
+    placeholderData: keepPreviousData,
   });
 }

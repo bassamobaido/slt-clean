@@ -1,4 +1,4 @@
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, keepPreviousData } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import type { EnrichedComment, DrawerFilter } from "@/lib/db-types";
 import type { DrawerSort } from "@/components/explore/CommentsDrawer";
@@ -181,6 +181,9 @@ export function useOverviewCommentsCount(opts: Opts) {
       return counts[0] + counts[1] + counts[2];
     },
     staleTime: 30_000,
+    gcTime: 30 * 60_000,
+    refetchOnWindowFocus: false,
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -328,5 +331,7 @@ export function useOverviewComments(opts: Opts) {
     },
     getNextPageParam: (last) => last.items.length > 0 ? last.page + 1 : undefined,
     staleTime: 30_000,
+    gcTime: 30 * 60_000,
+    refetchOnWindowFocus: false,
   });
 }

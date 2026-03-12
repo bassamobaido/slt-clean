@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import type { PlatformStats, ChartPoint, TopPost, Platform } from "@/lib/db-types";
 
@@ -134,6 +134,9 @@ export function useOverviewData(dateFrom?: string, dateTo?: string) {
       return { tiktok, instagram, youtube, totals, trendingPosts };
     },
     staleTime: 5 * 60_000,
+    gcTime: 30 * 60_000,
+    refetchOnWindowFocus: false,
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -178,5 +181,8 @@ export function useCommentsTimeline(dateFrom?: string, dateTo?: string, granular
       return groupTimeline(daily, g);
     },
     staleTime: 5 * 60_000,
+    gcTime: 30 * 60_000,
+    refetchOnWindowFocus: false,
+    placeholderData: keepPreviousData,
   });
 }

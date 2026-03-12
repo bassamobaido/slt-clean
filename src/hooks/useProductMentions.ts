@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { PRODUCTS, type Product } from "@/lib/products";
 
@@ -251,5 +251,8 @@ export function useProductMentions(opts: UseProductMentionsOpts) {
       return countCommentsForProducts(postIdsByPlatform, dateFrom, dateTo);
     },
     staleTime: 5 * 60_000,
+    gcTime: 30 * 60_000,
+    refetchOnWindowFocus: false,
+    placeholderData: keepPreviousData,
   });
 }

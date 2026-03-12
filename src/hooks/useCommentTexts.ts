@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import type { Platform } from "@/lib/db-types";
 
@@ -37,6 +37,9 @@ export function useCommentTexts(opts: Opts) {
       return (data || []).map((r: any) => r[cfg.textCol]).filter(Boolean) as string[];
     },
     staleTime: 5 * 60_000,
+    gcTime: 30 * 60_000,
+    refetchOnWindowFocus: false,
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -67,5 +70,8 @@ export function useAllCommentTexts(dateFrom?: string, dateTo?: string) {
       return results;
     },
     staleTime: 5 * 60_000,
+    gcTime: 30 * 60_000,
+    refetchOnWindowFocus: false,
+    placeholderData: keepPreviousData,
   });
 }
