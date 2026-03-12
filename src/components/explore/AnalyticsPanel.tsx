@@ -67,7 +67,7 @@ interface Props {
   onWordClick?: (word: string) => void;
   productMentions?: ProductMention[];
   productMentionsLoading?: boolean;
-  onProductClick?: (textTerm: string, productName: string) => void;
+  onProductClick?: (textTerm: string, productName: string, productId?: string) => void;
 }
 
 export default function AnalyticsPanel({

@@ -41,6 +41,7 @@ interface CommentOpts extends QueryOpts {
   sort?: CommentSort;
   filterDate?: string;
   filterPostId?: string;
+  filterPostIds?: string[];
   enabled?: boolean;
 }
 
@@ -49,7 +50,7 @@ function sortConfig(sort: CommentSort) {
     newest: { col: "comment_timestamp", asc: false },
     oldest: { col: "comment_timestamp", asc: true },
     most_likes: { col: "comment_likes", asc: false },
-    most_replies: { col: "comment_timestamp", asc: false }, // IG has no reply count
+    most_replies: { col: "comment_timestamp", asc: false },
   };
   return map[sort];
 }
@@ -57,12 +58,12 @@ function sortConfig(sort: CommentSort) {
 export function useInstagramComments(opts: CommentOpts) {
   const {
     account, dateFrom, dateTo, search,
-    sort = "newest", filterDate, filterPostId,
+    sort = "newest", filterDate, filterPostId, filterPostIds,
     enabled = true,
   } = opts;
 
   return useInfiniteQuery({
-    queryKey: ["instagram-comments", account, dateFrom, dateTo, search, sort, filterDate, filterPostId],
+    queryKey: ["instagram-comments", account, dateFrom, dateTo, search, sort, filterDate, filterPostId, filterPostIds],
     enabled,
     initialPageParam: 0,
     queryFn: async ({ pageParam = 0 }) => {
@@ -85,6 +86,7 @@ export function useInstagramComments(opts: CommentOpts) {
         q = q.lt("comment_timestamp", filterDate + "T23:59:59.999");
       }
       if (filterPostId) q = q.eq("post_id", filterPostId);
+      if (filterPostIds && filterPostIds.length > 0) q = q.in("post_id", filterPostIds);
 
       const { data: comments, count, error } = await q;
       if (error) throw error;

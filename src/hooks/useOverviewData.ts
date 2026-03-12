@@ -10,7 +10,7 @@ interface OverviewData {
   trendingPosts: TopPost[];
 }
 
-export type TimeGranularity = "hour" | "day" | "week" | "month";
+export type TimeGranularity = "day" | "week" | "month";
 
 export interface TimelinePoint {
   date: string;
@@ -26,10 +26,41 @@ export function autoGranularity(dateFrom?: string, dateTo?: string): TimeGranula
   if (!dateFrom || !dateTo) return "day";
   const ms = new Date(dateTo).getTime() - new Date(dateFrom).getTime();
   const days = ms / (1000 * 60 * 60 * 24);
-  if (days <= 1) return "hour";
   if (days <= 60) return "day";
   if (days <= 180) return "week";
   return "month";
+}
+
+/** Group daily data into weeks or months client-side */
+function groupTimeline(
+  daily: TimelinePoint[],
+  granularity: TimeGranularity,
+): TimelinePoint[] {
+  if (granularity === "day") return daily;
+
+  const grouped: Record<string, { tiktok: number; instagram: number; youtube: number }> = {};
+
+  for (const pt of daily) {
+    let key: string;
+    if (granularity === "month") {
+      key = pt.date.slice(0, 7); // YYYY-MM
+    } else {
+      // week: find Monday of the week
+      const d = new Date(pt.date);
+      const day = d.getDay();
+      const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Monday
+      const monday = new Date(d.setDate(diff));
+      key = monday.toISOString().slice(0, 10);
+    }
+    if (!grouped[key]) grouped[key] = { tiktok: 0, instagram: 0, youtube: 0 };
+    grouped[key].tiktok += pt.tiktok;
+    grouped[key].instagram += pt.instagram;
+    grouped[key].youtube += pt.youtube;
+  }
+
+  return Object.entries(grouped)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, counts]) => ({ date, ...counts }));
 }
 
 export function useOverviewData(dateFrom?: string, dateTo?: string) {
@@ -38,41 +69,41 @@ export function useOverviewData(dateFrom?: string, dateTo?: string) {
     queryFn: async () => {
       const dp = { p_account: null, p_date_from: dateFrom || null, p_date_to: dateTo || null };
 
-      // 1. Per-platform stats + YouTube direct query (no posts table)
-      const [ttRes, igRes, ytCommentsQ, ytVideosQ] = await Promise.all([
+      // Per-platform stats + YouTube comment count (simple, reliable)
+      const [ttRes, igRes, ytCountRes] = await Promise.all([
         (supabase as any).rpc("get_tiktok_stats", dp),
         (supabase as any).rpc("get_instagram_stats", dp),
-        // YouTube: count comments & sum likes directly
-        (supabase as any)
-          .from("youtube_data")
-          .select("comment_id", { count: "exact", head: true })
-          .gte("comment_published_at", dateFrom || "1970-01-01")
-          .lte("comment_published_at", dateTo || "2099-12-31"),
-        // YouTube: count distinct videos (use RPC or aggregate)
-        (supabase as any).rpc("get_youtube_stats", dp),
+        // YouTube: just count comments — reliable, no inflation
+        (() => {
+          let q = (supabase as any)
+            .from("youtube_data")
+            .select("comment_id", { count: "exact", head: true });
+          if (dateFrom) q = q.gte("comment_published_at", dateFrom);
+          if (dateTo) q = q.lte("comment_published_at", dateTo);
+          return q;
+        })(),
       ]);
 
       const tiktok: PlatformStats = ttRes.data || empty;
       const instagram: PlatformStats = igRes.data || empty;
 
-      // YouTube: reliable counts from direct queries + RPC fallback for video counts
-      const ytRpc = ytVideosQ.data || empty;
+      // YouTube: only show comment count — video/view counts duplicate per row
       const youtube: PlatformStats = {
-        total_posts: ytRpc.total_posts || 0,
-        total_comments: ytCommentsQ.count ?? ytRpc.total_comments ?? 0,
-        total_likes: ytRpc.total_likes || 0,
+        total_posts: 0,
+        total_comments: ytCountRes.count ?? 0,
+        total_likes: 0,
         total_shares: 0,
-        total_views: 0, // Don't show views — duplicated per comment row
+        total_views: 0,
       };
 
       const totals = {
-        total_posts: tiktok.total_posts + instagram.total_posts + youtube.total_posts,
-        total_likes: tiktok.total_likes + instagram.total_likes + youtube.total_likes,
+        total_posts: tiktok.total_posts + instagram.total_posts,
+        total_likes: tiktok.total_likes + instagram.total_likes,
         total_comments: tiktok.total_comments + instagram.total_comments + youtube.total_comments,
-        total_views: tiktok.total_views + instagram.total_views, // Exclude YouTube views
+        total_views: tiktok.total_views + instagram.total_views,
       };
 
-      // 2. Trending posts (top by engagement across platforms)
+      // Trending posts
       const [ttTop, igTop, ytTop] = await Promise.all([
         (supabase as any).rpc("get_tiktok_top_posts", { ...dp, p_limit: 5 }),
         (supabase as any).rpc("get_instagram_top_posts", { ...dp, p_limit: 5 }),
@@ -106,21 +137,23 @@ export function useOverviewData(dateFrom?: string, dateTo?: string) {
   });
 }
 
-/** Separate hook for comments timeline — re-fetches when granularity changes */
+/**
+ * Separate hook for comments timeline.
+ * Always fetches DAILY data from existing RPCs, then groups client-side.
+ */
 export function useCommentsTimeline(dateFrom?: string, dateTo?: string, granularity?: TimeGranularity) {
   const g = granularity || autoGranularity(dateFrom, dateTo);
-
-  const rpcSuffix = g === "hour" ? "per_hour" : g === "week" ? "per_week" : g === "month" ? "per_month" : "per_day";
 
   return useQuery<TimelinePoint[]>({
     queryKey: ["overview-timeline", dateFrom, dateTo, g],
     queryFn: async () => {
       const dp = { p_account: null, p_date_from: dateFrom || null, p_date_to: dateTo || null };
 
+      // Always fetch daily — these RPCs already exist and work
       const [ttRes, igRes, ytRes] = await Promise.all([
-        (supabase as any).rpc(`get_tiktok_comments_${rpcSuffix}`, dp),
-        (supabase as any).rpc(`get_instagram_comments_${rpcSuffix}`, dp),
-        (supabase as any).rpc(`get_youtube_comments_${rpcSuffix}`, dp),
+        (supabase as any).rpc("get_tiktok_comments_per_day", dp),
+        (supabase as any).rpc("get_instagram_comments_per_day", dp),
+        (supabase as any).rpc("get_youtube_comments_per_day", dp),
       ]);
 
       const timelineMap: Record<string, { tiktok: number; instagram: number; youtube: number }> = {};
@@ -137,9 +170,12 @@ export function useCommentsTimeline(dateFrom?: string, dateTo?: string, granular
         timelineMap[r.date].youtube = Number(r.count);
       }
 
-      return Object.entries(timelineMap)
+      const daily = Object.entries(timelineMap)
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([date, counts]) => ({ date, ...counts }));
+
+      // Group into weeks/months client-side if needed
+      return groupTimeline(daily, g);
     },
     staleTime: 5 * 60_000,
   });

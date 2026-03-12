@@ -41,6 +41,7 @@ interface CommentOpts extends QueryOpts {
   sort?: CommentSort;
   filterDate?: string;
   filterPostId?: string; // video_id
+  filterPostIds?: string[]; // video_ids
   enabled?: boolean;
 }
 
@@ -57,12 +58,12 @@ function sortConfig(sort: CommentSort) {
 export function useYouTubeComments(opts: CommentOpts) {
   const {
     account, dateFrom, dateTo, search,
-    sort = "newest", filterDate, filterPostId,
+    sort = "newest", filterDate, filterPostId, filterPostIds,
     enabled = true,
   } = opts;
 
   return useInfiniteQuery({
-    queryKey: ["youtube-comments", account, dateFrom, dateTo, search, sort, filterDate, filterPostId],
+    queryKey: ["youtube-comments", account, dateFrom, dateTo, search, sort, filterDate, filterPostId, filterPostIds],
     enabled,
     initialPageParam: 0,
     queryFn: async ({ pageParam = 0 }) => {
@@ -85,6 +86,7 @@ export function useYouTubeComments(opts: CommentOpts) {
         q = q.lt("comment_published_at", filterDate + "T23:59:59.999");
       }
       if (filterPostId) q = q.eq("video_id", filterPostId);
+      if (filterPostIds && filterPostIds.length > 0) q = q.in("video_id", filterPostIds);
 
       const { data: comments, count, error } = await q;
       if (error) throw error;

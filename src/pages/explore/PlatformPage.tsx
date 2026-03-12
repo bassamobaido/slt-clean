@@ -156,7 +156,11 @@ export default function PlatformPage({
             onWordClick={(word) => onDrawerFilterChange({ type: "word", word, label: `كلمة: ${word}` })}
             productMentions={productMentions}
             productMentionsLoading={productMentionsLoading}
-            onProductClick={(term, name) => onDrawerFilterChange({ type: "word", word: term, label: `منتج: ${name}` })}
+            onProductClick={(term, name, productId) => onDrawerFilterChange(
+              productId
+                ? { type: "product", productId, label: `منتج: ${name}` }
+                : { type: "word", word: term, label: `منتج: ${name}` }
+            )}
           />
         </div>
 

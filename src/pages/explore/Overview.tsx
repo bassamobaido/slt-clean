@@ -19,7 +19,6 @@ import { useAllCommentTexts } from "@/hooks/useCommentTexts";
 import { useProductMentions } from "@/hooks/useProductMentions";
 
 const GRANULARITY_OPTIONS: { key: TimeGranularity; label: string }[] = [
-  { key: "hour", label: "ساعة" },
   { key: "day", label: "يوم" },
   { key: "week", label: "أسبوع" },
   { key: "month", label: "شهر" },
@@ -155,7 +154,11 @@ export default function Overview() {
         data={productMentions}
         isLoading={productsLoading}
         title="تفاعل منتجات ثمانية"
-        onProductClick={(term, name) => setDrawerFilter({ type: "word", word: term, label: `منتج: ${name}` })}
+        onProductClick={(term, name, productId) => setDrawerFilter(
+          productId
+            ? { type: "product", productId, label: `منتج: ${name}` }
+            : { type: "word", word: term, label: `منتج: ${name}` }
+        )}
       />
 
       {/* Comments Timeline with Granularity Toggle */}
@@ -204,7 +207,6 @@ export default function Overview() {
                   tickLine={false}
                   tick={{ fontSize: 10, fontWeight: 700, fill: "hsl(var(--muted-foreground))" }}
                   tickFormatter={(v) => {
-                    if (activeGranularity === "hour") return v.slice(11); // HH:00
                     if (activeGranularity === "month") return v; // YYYY-MM
                     return v.slice(5); // MM-DD
                   }}

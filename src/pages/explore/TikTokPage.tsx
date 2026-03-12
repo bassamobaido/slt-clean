@@ -16,6 +16,7 @@ import { TIKTOK_ACCOUNTS } from "@/lib/db-types";
 import { TikTokIcon } from "@/components/icons/PlatformIcons";
 import { useCommentTexts } from "@/hooks/useCommentTexts";
 import { useProductMentions } from "@/hooks/useProductMentions";
+import { useProductPostIds } from "@/hooks/useProductPostIds";
 
 export default function TikTokPage() {
   const { dateRange } = useDateRange();
@@ -65,15 +66,24 @@ export default function TikTokPage() {
     platform: "tiktok", account: qOpts.account, dateFrom: qOpts.dateFrom, dateTo: qOpts.dateTo,
   });
 
+  // Product → post_ids resolution for drawer
+  const { data: productPostIds } = useProductPostIds({
+    productId: drawerFilter?.type === "product" ? drawerFilter.productId : undefined,
+    platform: "tiktok",
+    dateFrom: dateRange.from,
+    dateTo: dateRange.to,
+  });
+
   // Drawer comments
   const drawerQ = useTikTokComments({
     ...qOpts,
     sort: drawerSort as CommentSort,
     filterDate: drawerFilter?.type === "date" ? drawerFilter.date : undefined,
     filterPostId: drawerFilter?.type === "post" ? drawerFilter.postId : undefined,
+    filterPostIds: drawerFilter?.type === "product" ? productPostIds : undefined,
     account: drawerFilter?.type === "account" ? drawerFilter.account : qOpts.account,
     search: drawerFilter?.type === "word" ? drawerFilter.word : undefined,
-    enabled: !!drawerFilter,
+    enabled: !!drawerFilter && (drawerFilter.type !== "product" || !!productPostIds),
   });
 
   return (

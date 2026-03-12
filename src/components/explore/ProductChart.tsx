@@ -17,7 +17,7 @@ interface Props {
   data?: ProductMention[];
   isLoading: boolean;
   title?: string;
-  onProductClick?: (textTerm: string, productName: string) => void;
+  onProductClick?: (textTerm: string, productName: string, productId?: string) => void;
 }
 
 export default function ProductChart({
@@ -108,7 +108,7 @@ export default function ProductChart({
               cursor="pointer"
               onClick={(data: any) => {
                 if (onProductClick && data) {
-                  onProductClick(data.firstTextTerm, data.name);
+                  onProductClick(data.firstTextTerm, data.name, data.id);
                 }
               }}
               label={{
