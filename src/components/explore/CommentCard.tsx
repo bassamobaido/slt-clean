@@ -4,6 +4,7 @@ import { formatDistanceToNow } from "date-fns";
 import { ar } from "date-fns/locale";
 import type { EnrichedComment } from "@/lib/db-types";
 import { PLATFORM_COLORS } from "@/lib/db-types";
+import { PLATFORM_ICON_MAP } from "@/components/icons/PlatformIcons";
 
 function relativeTime(iso: string): string {
   try {
@@ -45,9 +46,15 @@ export default function CommentCard({ comment }: { comment: EnrichedComment }) {
         <div className="flex-1 min-w-0">
           {/* Header: author + time */}
           <div className="flex items-center gap-2 mb-1 flex-wrap">
+            {(() => { const PIcon = PLATFORM_ICON_MAP[c.platform]; return PIcon ? <PIcon className="w-3 h-3" style={{ color: platformColor }} /> : null; })()}
             <span className="text-[12px] font-bold text-foreground/80">
               {c.authorName}
             </span>
+            {c.accountName && (
+              <span className="text-[10px] font-bold text-muted-foreground/40 bg-muted/10 px-1.5 py-0.5 rounded">
+                {c.accountName}
+              </span>
+            )}
             {c.isVerified && (
               <svg className="w-3.5 h-3.5 text-thmanyah-blue" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />

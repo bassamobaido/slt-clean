@@ -103,7 +103,7 @@ export function useOverviewComments(opts: Opts) {
           const s = applySortCol(sort, "tiktok");
           let q = (supabase as any)
             .from("tiktok_comments")
-            .select("comment_cid, comment_text, comment_create_time_iso, comment_digg_count, comment_unique_id, comment_avatar_thumbnail, post_id")
+            .select("comment_cid, comment_text, comment_create_time_iso, comment_digg_count, comment_unique_id, comment_avatar_thumbnail, post_id, account_name_ar, account_username")
             .order(s.col, { ascending: s.asc })
             .range(from, to);
           q = applyFilters(q, "tiktok", dateFrom, dateTo, filterDate, searchWord, filterPostId);
@@ -120,6 +120,7 @@ export function useOverviewComments(opts: Opts) {
               replyCount: 0,
               parentPostId: c.post_id || undefined,
               platform: "tiktok",
+              accountName: c.account_name_ar || c.account_username || undefined,
             });
           }
         })(),
@@ -128,7 +129,7 @@ export function useOverviewComments(opts: Opts) {
           const s = applySortCol(sort, "instagram");
           let q = (supabase as any)
             .from("instagram_comments")
-            .select("comment_id, comment_text, comment_timestamp, comment_likes, comment_owner_username, comment_owner_profile_pic, post_id")
+            .select("comment_id, comment_text, comment_timestamp, comment_likes, comment_owner_username, comment_owner_profile_pic, post_id, account_name_ar, account_username")
             .order(s.col, { ascending: s.asc })
             .range(from, to);
           q = applyFilters(q, "instagram", dateFrom, dateTo, filterDate, searchWord, filterPostId);
@@ -145,6 +146,7 @@ export function useOverviewComments(opts: Opts) {
               replyCount: 0,
               parentPostId: c.post_id || undefined,
               platform: "instagram",
+              accountName: c.account_name_ar || c.account_username || undefined,
             });
           }
         })(),
@@ -153,7 +155,7 @@ export function useOverviewComments(opts: Opts) {
           const s = applySortCol(sort, "youtube");
           let q = (supabase as any)
             .from("youtube_data")
-            .select("comment_id, comment_text, comment_published_at, comment_like_count, author_display_name, author_thumbnail_url, video_id, video_title, video_thumbnail_url")
+            .select("comment_id, comment_text, comment_published_at, comment_like_count, author_display_name, author_thumbnail_url, video_id, video_title, video_thumbnail_url, account_name")
             .order(s.col, { ascending: s.asc })
             .range(from, to);
           q = applyFilters(q, "youtube", dateFrom, dateTo, filterDate, searchWord, filterPostId);
@@ -172,6 +174,7 @@ export function useOverviewComments(opts: Opts) {
               parentPostText: c.video_title || undefined,
               parentPostThumbnail: c.video_thumbnail_url || undefined,
               platform: "youtube",
+              accountName: c.account_name || undefined,
             });
           }
         })(),

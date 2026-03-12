@@ -104,6 +104,7 @@ export function useYouTubeComments(opts: CommentOpts) {
         parentPostUrl: c.video_url || undefined,
         parentPostThumbnail: c.video_thumbnail_url || undefined,
         platform: "youtube" as const,
+        accountName: c.account_name || undefined,
       }));
 
       return { items, total: count || 0, page: pageParam };

@@ -118,6 +118,7 @@ export function useInstagramComments(opts: CommentOpts) {
         parentPostUrl: postMap.get(c.post_id || "")?.url,
         parentPostThumbnail: postMap.get(c.post_id || "")?.thumbnail || undefined,
         platform: "instagram" as const,
+        accountName: c.account_name_ar || c.account_username || undefined,
       }));
 
       return { items, total: count || 0, page: pageParam };

@@ -122,6 +122,7 @@ export interface EnrichedComment {
   parentPostUrl?: string;
   parentPostThumbnail?: string;
   platform: Platform;
+  accountName?: string;
 }
 
 export interface ChartPoint {

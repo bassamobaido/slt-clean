@@ -7,7 +7,7 @@ import {
 import { MessageSquare, Eye, Heart, TrendingUp, ExternalLink, Compass } from "lucide-react";
 import { useDateRange } from "@/contexts/DateRangeContext";
 import DateRangeFilter from "@/components/explore/DateRangeFilter";
-import { useOverviewData } from "@/hooks/useOverviewData";
+import { useOverviewData, useCommentsTimeline, autoGranularity, type TimeGranularity } from "@/hooks/useOverviewData";
 import { useOverviewComments, useOverviewCommentsCount } from "@/hooks/useOverviewComments";
 import { fmtNum, PLATFORM_COLORS, PLATFORM_LABELS, type Platform, type DrawerFilter } from "@/lib/db-types";
 import { PLATFORM_ICON_MAP } from "@/components/icons/PlatformIcons";
@@ -18,6 +18,13 @@ import CommentsDrawer, { type DrawerSort } from "@/components/explore/CommentsDr
 import { useAllCommentTexts } from "@/hooks/useCommentTexts";
 import { useProductMentions } from "@/hooks/useProductMentions";
 
+const GRANULARITY_OPTIONS: { key: TimeGranularity; label: string }[] = [
+  { key: "hour", label: "ساعة" },
+  { key: "day", label: "يوم" },
+  { key: "week", label: "أسبوع" },
+  { key: "month", label: "شهر" },
+];
+
 function Skeleton({ className = "" }: { className?: string }) {
   return <div className={`animate-pulse rounded-lg bg-muted/20 ${className}`} />;
 }
@@ -27,6 +34,12 @@ export default function Overview() {
   const { dateRange } = useDateRange();
   const { data, isLoading } = useOverviewData(dateRange.from, dateRange.to);
   const { data: allTexts, isLoading: textsLoading } = useAllCommentTexts(dateRange.from, dateRange.to);
+
+  // Timeline granularity
+  const smartGranularity = autoGranularity(dateRange.from, dateRange.to);
+  const [manualGranularity, setManualGranularity] = useState<TimeGranularity | null>(null);
+  const activeGranularity = manualGranularity || smartGranularity;
+  const { data: commentsTimeline } = useCommentsTimeline(dateRange.from, dateRange.to, activeGranularity);
   const { data: productMentions, isLoading: productsLoading } = useProductMentions({
     platform: "all", dateFrom: dateRange.from, dateTo: dateRange.to,
   });
@@ -145,14 +158,31 @@ export default function Overview() {
         onProductClick={(term, name) => setDrawerFilter({ type: "word", word: term, label: `منتج: ${name}` })}
       />
 
-      {/* Comments Timeline (changed from posts) */}
-      {data && data.commentsTimeline.length > 0 && (
+      {/* Comments Timeline with Granularity Toggle */}
+      {commentsTimeline && commentsTimeline.length > 0 && (
         <div className="bg-card rounded-2xl border border-border/40 p-5">
-          <h4 className="text-[14px] font-display font-bold text-foreground/70 mb-4">نشاط التعليقات عبر الزمن</h4>
+          <div className="flex items-center justify-between mb-4">
+            <h4 className="text-[14px] font-display font-bold text-foreground/70">نشاط التعليقات عبر الزمن</h4>
+            <div className="flex items-center gap-1 bg-muted/5 border border-border/40 rounded-lg p-0.5">
+              {GRANULARITY_OPTIONS.map((opt) => (
+                <button
+                  key={opt.key}
+                  onClick={() => setManualGranularity(opt.key === smartGranularity && !manualGranularity ? null : opt.key)}
+                  className={`px-2.5 py-1 rounded-md text-[10px] font-bold transition-all ${
+                    activeGranularity === opt.key
+                      ? "bg-thmanyah-green text-white shadow-sm"
+                      : "text-muted-foreground/50 hover:text-foreground/70"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="h-[280px]">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart
-                data={data.commentsTimeline}
+                data={commentsTimeline}
                 margin={{ bottom: 10 }}
                 onClick={(e: any) => {
                   if (e?.activeLabel) {
@@ -173,7 +203,11 @@ export default function Overview() {
                   axisLine={false}
                   tickLine={false}
                   tick={{ fontSize: 10, fontWeight: 700, fill: "hsl(var(--muted-foreground))" }}
-                  tickFormatter={(v) => v.slice(5)}
+                  tickFormatter={(v) => {
+                    if (activeGranularity === "hour") return v.slice(11); // HH:00
+                    if (activeGranularity === "month") return v; // YYYY-MM
+                    return v.slice(5); // MM-DD
+                  }}
                 />
                 <YAxis
                   axisLine={false}

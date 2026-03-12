@@ -13,6 +13,8 @@ const SORT_OPTIONS: { key: CommentSort; label: string }[] = [
   { key: "most_replies", label: "الأكثر ردوداً" },
 ];
 
+const PAGE_SIZE = 10;
+
 interface Props {
   comments: EnrichedComment[];
   total: number;
@@ -31,6 +33,22 @@ export default function CommentsPanel({
   hasMore, search, onSearchChange, sort, onSortChange, onLoadMore,
 }: Props) {
   const [showSort, setShowSort] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+
+  // Show only visibleCount comments from the loaded list
+  const visibleComments = comments.slice(0, visibleCount);
+  const canShowMore = visibleCount < comments.length || hasMore;
+
+  const handleShowMore = () => {
+    if (visibleCount < comments.length) {
+      // Show more from already-loaded comments
+      setVisibleCount((prev) => prev + PAGE_SIZE);
+    } else if (hasMore) {
+      // Need to fetch more from server, then bump visible count
+      setVisibleCount((prev) => prev + PAGE_SIZE);
+      onLoadMore();
+    }
+  };
 
   return (
     <div className="flex flex-col h-full">
@@ -51,7 +69,7 @@ export default function CommentsPanel({
         <input
           type="text"
           value={search}
-          onChange={(e) => onSearchChange(e.target.value)}
+          onChange={(e) => { onSearchChange(e.target.value); setVisibleCount(PAGE_SIZE); }}
           placeholder="ابحث في التعليقات..."
           className="w-full py-2.5 pr-9 pl-3 rounded-lg bg-muted/5 border border-border/40 text-[12px] font-bold text-foreground/80 placeholder:text-muted-foreground/25 focus:outline-none focus:ring-1 focus:ring-thmanyah-green/20 transition-all"
         />
@@ -71,7 +89,7 @@ export default function CommentsPanel({
             {SORT_OPTIONS.map((s) => (
               <button
                 key={s.key}
-                onClick={() => { onSortChange(s.key); setShowSort(false); }}
+                onClick={() => { onSortChange(s.key); setShowSort(false); setVisibleCount(PAGE_SIZE); }}
                 className={`w-full text-right px-3 py-1.5 text-[11px] font-bold transition-colors ${
                   sort === s.key ? "text-thmanyah-green bg-thmanyah-green/5" : "text-foreground/70 hover:bg-muted/5"
                 }`}
@@ -82,6 +100,13 @@ export default function CommentsPanel({
           </div>
         )}
       </div>
+
+      {/* Showing count */}
+      {!isLoading && comments.length > 0 && (
+        <p className="text-[10px] font-bold text-muted-foreground/40 mb-2">
+          عرض {fmtNum(Math.min(visibleCount, comments.length))} من {fmtNum(total)} تعليق
+        </p>
+      )}
 
       {/* Comments list */}
       <div className="flex-1 overflow-y-auto space-y-2 custom-scrollbar">
@@ -107,19 +132,19 @@ export default function CommentsPanel({
           </div>
         ) : (
           <>
-            {comments.map((c) => (
+            {visibleComments.map((c) => (
               <CommentCard key={c.id} comment={c} />
             ))}
-            {hasMore && (
+            {canShowMore && (
               <button
-                onClick={onLoadMore}
+                onClick={handleShowMore}
                 disabled={isFetchingMore}
                 className="w-full py-3 rounded-xl border border-border/40 text-[12px] font-bold text-muted-foreground/50 hover:text-foreground hover:border-border transition-all flex items-center justify-center gap-2"
               >
                 {isFetchingMore ? (
                   <><Loader2 className="w-3.5 h-3.5 animate-spin" /> جاري التحميل...</>
                 ) : (
-                  "تحميل المزيد"
+                  "عرض المزيد"
                 )}
               </button>
             )}

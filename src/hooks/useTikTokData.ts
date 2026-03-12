@@ -116,6 +116,7 @@ export function useTikTokComments(opts: CommentOpts) {
         parentPostText: postMap.get(c.post_id || "")?.text,
         parentPostUrl: postMap.get(c.post_id || "")?.url,
         platform: "tiktok" as const,
+        accountName: c.account_name_ar || c.account_username || undefined,
       }));
 
       return { items, total: count || 0, page: pageParam };
