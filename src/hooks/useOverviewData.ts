@@ -7,7 +7,7 @@ interface OverviewData {
   instagram: PlatformStats;
   youtube: PlatformStats;
   totals: { total_posts: number; total_likes: number; total_comments: number; total_views: number };
-  timeline: { date: string; tiktok: number; instagram: number; youtube: number }[];
+  commentsTimeline: { date: string; tiktok: number; instagram: number; youtube: number }[];
   trendingPosts: TopPost[];
 }
 
@@ -35,23 +35,28 @@ export function useOverviewData(dateFrom?: string, dateTo?: string) {
         total_views: tiktok.total_views + instagram.total_views + youtube.total_views,
       };
 
-      // 2. Timeline (posts per day per platform)
-      const [ttTimeline, igTimeline] = await Promise.all([
-        (supabase as any).rpc("get_tiktok_posts_per_day", { p_account: null, p_date_from: dateFrom || null, p_date_to: dateTo || null }),
-        (supabase as any).rpc("get_instagram_posts_per_day", { p_account: null, p_date_from: dateFrom || null, p_date_to: dateTo || null }),
+      // 2. Comments per day per platform (changed from posts per day)
+      const [ttComments, igComments, ytComments] = await Promise.all([
+        (supabase as any).rpc("get_tiktok_comments_per_day", { p_account: null, p_date_from: dateFrom || null, p_date_to: dateTo || null }),
+        (supabase as any).rpc("get_instagram_comments_per_day", { p_account: null, p_date_from: dateFrom || null, p_date_to: dateTo || null }),
+        (supabase as any).rpc("get_youtube_comments_per_day", { p_account: null, p_date_from: dateFrom || null, p_date_to: dateTo || null }),
       ]);
 
       const timelineMap: Record<string, { tiktok: number; instagram: number; youtube: number }> = {};
-      for (const r of (ttTimeline.data || []) as ChartPoint[]) {
+      for (const r of (ttComments.data || []) as ChartPoint[]) {
         if (!timelineMap[r.date]) timelineMap[r.date] = { tiktok: 0, instagram: 0, youtube: 0 };
         timelineMap[r.date].tiktok = Number(r.count);
       }
-      for (const r of (igTimeline.data || []) as ChartPoint[]) {
+      for (const r of (igComments.data || []) as ChartPoint[]) {
         if (!timelineMap[r.date]) timelineMap[r.date] = { tiktok: 0, instagram: 0, youtube: 0 };
         timelineMap[r.date].instagram = Number(r.count);
       }
+      for (const r of (ytComments.data || []) as ChartPoint[]) {
+        if (!timelineMap[r.date]) timelineMap[r.date] = { tiktok: 0, instagram: 0, youtube: 0 };
+        timelineMap[r.date].youtube = Number(r.count);
+      }
 
-      const timeline = Object.entries(timelineMap)
+      const commentsTimeline = Object.entries(timelineMap)
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([date, counts]) => ({ date, ...counts }));
 
@@ -83,7 +88,7 @@ export function useOverviewData(dateFrom?: string, dateTo?: string) {
         .sort((a, b) => b.engagement - a.engagement)
         .slice(0, 10);
 
-      return { tiktok, instagram, youtube, totals, timeline, trendingPosts };
+      return { tiktok, instagram, youtube, totals, commentsTimeline, trendingPosts };
     },
     staleTime: 5 * 60_000,
   });

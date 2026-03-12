@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   AreaChart, Area, XAxis, YAxis,
@@ -7,11 +8,13 @@ import { MessageSquare, Eye, Heart, TrendingUp, ExternalLink, Compass } from "lu
 import { useDateRange } from "@/contexts/DateRangeContext";
 import DateRangeFilter from "@/components/explore/DateRangeFilter";
 import { useOverviewData } from "@/hooks/useOverviewData";
-import { fmtNum, PLATFORM_COLORS, PLATFORM_LABELS, type Platform } from "@/lib/db-types";
+import { useOverviewComments } from "@/hooks/useOverviewComments";
+import { fmtNum, PLATFORM_COLORS, PLATFORM_LABELS, type Platform, type DrawerFilter } from "@/lib/db-types";
 import { PLATFORM_ICON_MAP } from "@/components/icons/PlatformIcons";
 import PageExplainer from "@/components/PageExplainer";
 import WordCloud from "@/components/explore/WordCloud";
 import ProductChart from "@/components/explore/ProductChart";
+import CommentsDrawer from "@/components/explore/CommentsDrawer";
 import { useAllCommentTexts } from "@/hooks/useCommentTexts";
 import { useProductMentions } from "@/hooks/useProductMentions";
 
@@ -26,6 +29,14 @@ export default function Overview() {
   const { data: allTexts, isLoading: textsLoading } = useAllCommentTexts(dateRange.from, dateRange.to);
   const { data: productMentions, isLoading: productsLoading } = useProductMentions({
     platform: "all", dateFrom: dateRange.from, dateTo: dateRange.to,
+  });
+
+  // Drawer state
+  const [drawerFilter, setDrawerFilter] = useState<DrawerFilter | null>(null);
+  const { data: drawerData, isLoading: drawerLoading } = useOverviewComments({
+    filter: drawerFilter,
+    dateFrom: dateRange.from,
+    dateTo: dateRange.to,
   });
 
   const platformCards: { key: Platform; path: string }[] = [
@@ -87,7 +98,6 @@ export default function Overview() {
               >
                 <div className="flex items-center gap-2 mb-3">
                   {(() => { const PIcon = PLATFORM_ICON_MAP[key]; return PIcon ? <PIcon className="w-4 h-4" /> : null; })()}
-
                   <span className="text-[13px] font-bold text-foreground/80">{PLATFORM_LABELS[key]}</span>
                   <ExternalLink className="w-3 h-3 text-muted-foreground/20 mr-auto group-hover:text-muted-foreground/50 transition-colors" />
                 </div>
@@ -127,15 +137,24 @@ export default function Overview() {
         data={productMentions}
         isLoading={productsLoading}
         title="تفاعل منتجات ثمانية"
+        onProductClick={(term, name) => setDrawerFilter({ type: "word", word: term, label: `منتج: ${name}` })}
       />
 
-      {/* Activity Timeline */}
-      {data && data.timeline.length > 0 && (
+      {/* Comments Timeline (changed from posts) */}
+      {data && data.commentsTimeline.length > 0 && (
         <div className="bg-card rounded-2xl border border-border/40 p-5">
-          <h4 className="text-[14px] font-display font-bold text-foreground/70 mb-4">النشاط عبر الزمن</h4>
+          <h4 className="text-[14px] font-display font-bold text-foreground/70 mb-4">نشاط التعليقات عبر الزمن</h4>
           <div className="h-[280px]">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={data.timeline} margin={{ bottom: 10 }}>
+              <AreaChart
+                data={data.commentsTimeline}
+                margin={{ bottom: 10 }}
+                onClick={(e: any) => {
+                  if (e?.activeLabel) {
+                    setDrawerFilter({ type: "date", date: e.activeLabel, label: e.activeLabel });
+                  }
+                }}
+              >
                 <defs>
                   {(["tiktok", "instagram", "youtube"] as const).map((p) => (
                     <linearGradient key={p} id={`grad-${p}`} x1="0" y1="0" x2="0" y2="1">
@@ -164,16 +183,16 @@ export default function Overview() {
                         <p className="text-white/60 mb-1">{label}</p>
                         {payload.map((p: any) => (
                           <p key={p.name} style={{ color: p.stroke }}>
-                            {PLATFORM_LABELS[p.name as Platform] || p.name}: {p.value?.toLocaleString("en-US")}
+                            {PLATFORM_LABELS[p.name as Platform] || p.name}: {p.value?.toLocaleString("en-US")} تعليق
                           </p>
                         ))}
                       </div>
                     ) : null
                   }
                 />
-                <Area type="monotone" dataKey="tiktok" stroke={PLATFORM_COLORS.tiktok} fill="url(#grad-tiktok)" strokeWidth={2} dot={false} animationDuration={800} />
-                <Area type="monotone" dataKey="instagram" stroke={PLATFORM_COLORS.instagram} fill="url(#grad-instagram)" strokeWidth={2} dot={false} animationDuration={800} />
-                <Area type="monotone" dataKey="youtube" stroke={PLATFORM_COLORS.youtube} fill="url(#grad-youtube)" strokeWidth={2} dot={false} animationDuration={800} />
+                <Area type="monotone" dataKey="tiktok" stroke={PLATFORM_COLORS.tiktok} fill="url(#grad-tiktok)" strokeWidth={2} dot={false} animationDuration={800} style={{ cursor: "pointer" }} />
+                <Area type="monotone" dataKey="instagram" stroke={PLATFORM_COLORS.instagram} fill="url(#grad-instagram)" strokeWidth={2} dot={false} animationDuration={800} style={{ cursor: "pointer" }} />
+                <Area type="monotone" dataKey="youtube" stroke={PLATFORM_COLORS.youtube} fill="url(#grad-youtube)" strokeWidth={2} dot={false} animationDuration={800} style={{ cursor: "pointer" }} />
                 <Legend
                   iconType="circle"
                   formatter={(v: string) => <span className="font-bold text-xs">{PLATFORM_LABELS[v as Platform] || v}</span>}
@@ -188,6 +207,7 @@ export default function Overview() {
       <WordCloud
         texts={allTexts || []}
         isLoading={textsLoading}
+        onWordClick={(word) => setDrawerFilter({ type: "word", word, label: `كلمة: ${word}` })}
       />
 
       {/* Trending Posts */}
@@ -229,6 +249,16 @@ export default function Overview() {
           </div>
         </div>
       )}
+
+      {/* Comments Drawer */}
+      <CommentsDrawer
+        open={!!drawerFilter}
+        onClose={() => setDrawerFilter(null)}
+        title={drawerFilter?.label || ""}
+        comments={drawerData?.items || []}
+        total={drawerData?.total || 0}
+        isLoading={drawerLoading}
+      />
     </div>
   );
 }

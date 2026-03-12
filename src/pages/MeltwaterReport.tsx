@@ -15,6 +15,8 @@ import {
   ExternalLink,
   X,
   ChevronUp,
+  Loader2,
+  Play,
 } from 'lucide-react';
 import PageExplainer from '@/components/PageExplainer';
 import { SentimentPieChart } from '@/components/SentimentPieChart';
@@ -25,12 +27,14 @@ import { ExcelExport } from '@/components/meltwater/ExcelExport';
 import { AboutThamanyah } from '@/components/meltwater/AboutThamanyah';
 import { WordCloud } from '@/components/meltwater/WordCloud';
 import { DataImport } from '@/components/meltwater/DataImport';
+import { Link } from 'react-router-dom';
+import { loadApiKeys, loadSelectedModel } from '@/lib/settings';
 
 /* ══════════════════════════════════════════════════════════════
    Sample Data
    ══════════════════════════════════════════════════════════════ */
 
-const analyzedTweets = [
+const SAMPLE_TWEETS = [
   { id: 1, text: "ماشاء الله شرح تفصيلي ومشوق ما تمنيت الفيديو يخلص ...عمل جبار تشكرون عليه", author: "@reich_hadhrmi", sentiment: "إيجابي", emotion: "إعجاب", keywords: ["شرح", "عمل جبار", "مشوق"], reach: 210, engagement: { likes: 0, retweets: 0, replies: 0 } },
   { id: 2, text: "قناه المدلل الزرقاء تطبل لهدف ضمك اللي خسرر واندعس", author: "@qcu8ero", sentiment: "سلبي", emotion: "غضب", keywords: ["تطبل", "خسر", "اندعس"], reach: 223, engagement: { likes: 0, retweets: 0, replies: 0 } },
   { id: 3, text: "كالعادة .. قناة ثمانية مع لقطة جواو فيلكس .. شاهد ماشفش حاجة !!", author: "@Aljamaz8910", sentiment: "سلبي", emotion: "إحباط", keywords: ["كالعادة", "ماشفش حاجة", "لقطة"], reach: 799, engagement: { likes: 0, retweets: 11, replies: 0 } },
@@ -68,40 +72,7 @@ const analyzedTweets = [
   { id: 35, text: "قناة ثمانية هلالية ولكن الشكوى لغير الله مذله احمد ربك ما طلعت فضايحكم", author: "@alallah67343", sentiment: "سلبي", emotion: "استياء", keywords: ["هلالية", "فضايح", "شكوى"], reach: 5, engagement: { likes: 0, retweets: 0, replies: 0 } },
 ];
 
-/* ── Computed stats ── */
-const totalTweets = analyzedTweets.length;
-const duplicatesRemoved = 89;
-const originalCount = totalTweets + duplicatesRemoved;
-
-const sentimentCounts = {
-  positive: analyzedTweets.filter(t => t.sentiment === "إيجابي").length,
-  negative: analyzedTweets.filter(t => t.sentiment === "سلبي").length,
-  neutral: analyzedTweets.filter(t => t.sentiment === "محايد").length,
-};
-
-const sentimentPercentages = {
-  positive: ((sentimentCounts.positive / totalTweets) * 100).toFixed(1),
-  negative: ((sentimentCounts.negative / totalTweets) * 100).toFixed(1),
-  neutral: ((sentimentCounts.neutral / totalTweets) * 100).toFixed(1),
-};
-
-const emotionCounts: Record<string, number> = {};
-analyzedTweets.forEach(t => {
-  emotionCounts[t.emotion] = (emotionCounts[t.emotion] || 0) + 1;
-});
-
-const keywordCounts: Record<string, number> = {};
-analyzedTweets.forEach(t => {
-  t.keywords.forEach(k => {
-    keywordCounts[k] = (keywordCounts[k] || 0) + 1;
-  });
-});
-
-const topKeywords = Object.entries(keywordCounts)
-  .sort((a, b) => b[1] - a[1])
-  .slice(0, 10);
-
-const totalReach = analyzedTweets.reduce((sum, t) => sum + t.reach, 0);
+type Tweet = typeof SAMPLE_TWEETS[number];
 
 /* ── Section navigation items ── */
 const SECTIONS = [
@@ -125,10 +96,144 @@ const MeltwaterReport = () => {
   const [selectedSentiment, setSelectedSentiment] = useState<string | null>(null);
   const mainRef = useRef<HTMLDivElement>(null);
 
+  // Data state
+  const [activeTweets, setActiveTweets] = useState<Tweet[]>(SAMPLE_TWEETS);
+  const [importedTweets, setImportedTweets] = useState<Tweet[] | null>(null);
+  const [analysisState, setAnalysisState] = useState<'idle' | 'ready' | 'analyzing' | 'done' | 'error'>('idle');
+  const [analysisProgress, setAnalysisProgress] = useState(0);
+  const [analysisError, setAnalysisError] = useState('');
+
+  // Computed stats
+  const totalTweets = activeTweets.length;
+  const duplicatesRemoved = activeTweets === SAMPLE_TWEETS ? 89 : 0;
+  const originalCount = totalTweets + duplicatesRemoved;
+
+  const sentimentCounts = useMemo(() => ({
+    positive: activeTweets.filter(t => t.sentiment === "إيجابي").length,
+    negative: activeTweets.filter(t => t.sentiment === "سلبي").length,
+    neutral: activeTweets.filter(t => t.sentiment === "محايد").length,
+  }), [activeTweets]);
+
+  const sentimentPercentages = useMemo(() => ({
+    positive: totalTweets ? ((sentimentCounts.positive / totalTweets) * 100).toFixed(1) : "0",
+    negative: totalTweets ? ((sentimentCounts.negative / totalTweets) * 100).toFixed(1) : "0",
+    neutral: totalTweets ? ((sentimentCounts.neutral / totalTweets) * 100).toFixed(1) : "0",
+  }), [sentimentCounts, totalTweets]);
+
+  const emotionCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    activeTweets.forEach(t => { counts[t.emotion] = (counts[t.emotion] || 0) + 1; });
+    return counts;
+  }, [activeTweets]);
+
+  const topKeywords = useMemo(() => {
+    const counts: Record<string, number> = {};
+    activeTweets.forEach(t => { t.keywords.forEach(k => { counts[k] = (counts[k] || 0) + 1; }); });
+    return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 10);
+  }, [activeTweets]);
+
+  const totalReach = useMemo(() => activeTweets.reduce((sum, t) => sum + t.reach, 0), [activeTweets]);
+
   const sentimentFilteredTweets = useMemo(() => {
     if (!selectedSentiment) return [];
-    return analyzedTweets.filter(t => t.sentiment === selectedSentiment);
-  }, [selectedSentiment]);
+    return activeTweets.filter(t => t.sentiment === selectedSentiment);
+  }, [selectedSentiment, activeTweets]);
+
+  // Import handler
+  const handleImport = (tweets: any[]) => {
+    setImportedTweets(tweets as Tweet[]);
+    setAnalysisState('ready');
+    setAnalysisError('');
+  };
+
+  // AI Analysis
+  const handleStartAnalysis = async () => {
+    if (!importedTweets) return;
+
+    const keys = loadApiKeys();
+    if (!keys.openrouter) {
+      setAnalysisError('no-key');
+      setAnalysisState('error');
+      return;
+    }
+
+    const modelId = loadSelectedModel();
+    setAnalysisState('analyzing');
+    setAnalysisProgress(0);
+    setAnalysisError('');
+
+    const BATCH_SIZE = 10;
+    const analyzed = [...importedTweets];
+    const totalBatches = Math.ceil(analyzed.length / BATCH_SIZE);
+
+    try {
+      for (let bi = 0; bi < totalBatches; bi++) {
+        const start = bi * BATCH_SIZE;
+        const batch = analyzed.slice(start, start + BATCH_SIZE);
+        const tweetsText = batch.map((t, i) => `[${i + 1}] ${t.text}`).join('\n');
+
+        const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${keys.openrouter}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: modelId,
+            messages: [
+              {
+                role: 'system',
+                content: `أنت محلل مشاعر متخصص في النصوص العربية. حلل التغريدات المرقمة وأرجع JSON فقط.
+لكل تغريدة أرجع:
+- index: رقم التغريدة (يبدأ من 1)
+- sentiment: إيجابي أو سلبي أو محايد
+- emotion: العاطفة (إعجاب، غضب، إحباط، حماس، فخر، استياء، إثارة، تساؤل، فضول، سخرية، انتقاد، تقدير، تشاؤم، صدمة، طلب، تحفظ، تحليل، محايد)
+- keywords: أهم 2-4 كلمات مفتاحية
+أرجع JSON بالشكل: {"results":[{"index":1,"sentiment":"...","emotion":"...","keywords":["..."]},...]}`,
+              },
+              { role: 'user', content: tweetsText },
+            ],
+            response_format: { type: 'json_object' },
+            temperature: 0.1,
+          }),
+        });
+
+        if (!res.ok) throw new Error(`API error: ${res.status}`);
+
+        const data = await res.json();
+        const content = data.choices?.[0]?.message?.content || '{}';
+        const parsed = JSON.parse(content);
+        const results = parsed.results || [];
+
+        for (const r of results) {
+          const idx = start + (r.index - 1);
+          if (idx >= 0 && idx < analyzed.length) {
+            analyzed[idx] = {
+              ...analyzed[idx],
+              sentiment: r.sentiment || analyzed[idx].sentiment,
+              emotion: r.emotion || analyzed[idx].emotion,
+              keywords: Array.isArray(r.keywords) ? r.keywords : analyzed[idx].keywords,
+            };
+          }
+        }
+
+        setAnalysisProgress(Math.round(((bi + 1) / totalBatches) * 100));
+      }
+
+      setActiveTweets(analyzed);
+      setAnalysisState('done');
+    } catch (err: any) {
+      setAnalysisError(err.message || 'حدث خطأ أثناء التحليل');
+      setAnalysisState('error');
+    }
+  };
+
+  // Use imported data directly without AI analysis
+  const handleUseDirectly = () => {
+    if (!importedTweets) return;
+    setActiveTweets(importedTweets);
+    setAnalysisState('done');
+  };
 
   const scrollTo = (id: string) => {
     setActiveSection(id);
@@ -197,9 +302,87 @@ const MeltwaterReport = () => {
 
       {/* ── Data Import & Export ── */}
       <div className="card-stagger grid grid-cols-1 md:grid-cols-2 gap-4" style={{ animationDelay: "0.1s" }}>
-        <DataImport onImport={(imported) => console.log('Imported', imported.length, 'tweets')} />
-        <ExcelExport tweets={analyzedTweets} reportDate="2026-01-22" />
+        <DataImport onImport={handleImport} />
+        <ExcelExport tweets={activeTweets} reportDate="2026-01-22" />
       </div>
+
+      {/* ── Analysis Controls ── */}
+      {analysisState !== 'idle' && (
+        <div className="card-stagger rounded-2xl bg-card border border-border/40 p-6 text-center space-y-4" style={{ animationDelay: "0.15s" }}>
+          {analysisState === 'ready' && (
+            <>
+              <div className="flex items-center justify-center gap-2 text-thmanyah-green mb-2">
+                <CheckCircle className="w-5 h-5" />
+                <span className="text-[14px] font-bold">تم استيراد {importedTweets?.length} تغريدة بنجاح</span>
+              </div>
+              <div className="flex items-center justify-center gap-3">
+                <button
+                  onClick={handleStartAnalysis}
+                  className="inline-flex items-center gap-2 px-8 py-3.5 rounded-2xl bg-thmanyah-green text-white font-bold text-[15px] hover:bg-thmanyah-green/90 transition-all shadow-lg shadow-thmanyah-green/20"
+                >
+                  <Play className="w-5 h-5" />
+                  ابدأ التحليل
+                </button>
+                <button
+                  onClick={handleUseDirectly}
+                  className="inline-flex items-center gap-2 px-6 py-3.5 rounded-2xl border border-border/40 text-muted-foreground font-bold text-[13px] hover:bg-muted/30 transition-all"
+                >
+                  استخدام البيانات مباشرة
+                </button>
+              </div>
+              <p className="text-[11px] font-bold text-muted-foreground/40">
+                سيتم تحليل المشاعر والعواطف والكلمات المفتاحية باستخدام الذكاء الاصطناعي
+              </p>
+            </>
+          )}
+
+          {analysisState === 'analyzing' && (
+            <>
+              <Loader2 className="w-8 h-8 text-thmanyah-green animate-spin mx-auto" />
+              <p className="text-[14px] font-bold text-foreground/80">جاري التحليل...</p>
+              <Progress value={analysisProgress} className="max-w-xs mx-auto h-2" />
+              <p className="text-[11px] font-bold text-muted-foreground/40">{analysisProgress}%</p>
+            </>
+          )}
+
+          {analysisState === 'done' && (
+            <div className="flex items-center justify-center gap-2 text-thmanyah-green">
+              <CheckCircle className="w-5 h-5" />
+              <span className="text-[14px] font-bold">تم التحليل بنجاح! التقرير أدناه يعكس البيانات المستوردة.</span>
+            </div>
+          )}
+
+          {analysisState === 'error' && (
+            <div className="space-y-3">
+              {analysisError === 'no-key' ? (
+                <>
+                  <div className="flex items-center justify-center gap-2 text-thmanyah-red">
+                    <AlertTriangle className="w-5 h-5" />
+                    <span className="text-[14px] font-bold">يجب إضافة مفتاح OpenRouter API أولاً</span>
+                  </div>
+                  <Link to="/settings" className="inline-flex items-center gap-1.5 text-[12px] font-bold text-thmanyah-blue hover:underline">
+                    الذهاب للإعدادات
+                    <ExternalLink className="w-3 h-3" />
+                  </Link>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center justify-center gap-2 text-thmanyah-red">
+                    <AlertTriangle className="w-5 h-5" />
+                    <span className="text-[14px] font-bold">{analysisError}</span>
+                  </div>
+                  <button
+                    onClick={handleStartAnalysis}
+                    className="text-[12px] font-bold text-thmanyah-blue hover:underline"
+                  >
+                    إعادة المحاولة
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ══════════════════════════════════════════
           SECTION: Overview
@@ -215,12 +398,12 @@ const MeltwaterReport = () => {
         </div>
 
         {/* KPIs */}
-        <TopicKPIs tweets={analyzedTweets} />
+        <TopicKPIs tweets={activeTweets} />
 
         {/* About Thamanyah */}
         <div className="space-y-3">
           <h3 className="text-[14px] font-display font-bold text-foreground/70">عن ثمانية وليس عن ثمانية</h3>
-          <AboutThamanyah tweets={analyzedTweets} />
+          <AboutThamanyah tweets={activeTweets} />
         </div>
       </section>
 
@@ -353,12 +536,12 @@ const MeltwaterReport = () => {
         </div>
 
         {/* Topic Categorization */}
-        <TopicCategorization tweets={analyzedTweets} />
+        <TopicCategorization tweets={activeTweets} />
 
         {/* Word Cloud */}
         <div className="space-y-3">
           <h3 className="text-[14px] font-display font-bold text-foreground/70">سحابة الكلمات</h3>
-          <WordCloud tweets={analyzedTweets} />
+          <WordCloud tweets={activeTweets} />
         </div>
       </section>
 
@@ -368,7 +551,7 @@ const MeltwaterReport = () => {
       <section id="timeline" className="scroll-mt-32 space-y-5">
         <SectionHeading icon={TrendingUp} color="#0072F9">التحليل الزمني</SectionHeading>
         <p className="text-[11px] font-bold text-muted-foreground/40 -mt-3">اضغط على أي نقطة في الرسم البياني لعرض التغريدات المقابلة</p>
-        <TimelineCharts tweets={analyzedTweets} />
+        <TimelineCharts tweets={activeTweets} />
       </section>
 
       {/* ══════════════════════════════════════════
@@ -785,7 +968,7 @@ const MeltwaterReport = () => {
         </div>
 
         <div className="space-y-2">
-          {analyzedTweets.map((tweet, i) => (
+          {activeTweets.map((tweet, i) => (
             <div
               key={tweet.id}
               className="card-stagger rounded-xl bg-card border border-border/30 px-5 py-4 hover:border-border/50 transition-colors"
