@@ -15,24 +15,39 @@ interface QueryOpts {
   dateTo?: string;
 }
 
-/* ── Stats (RPC) ── */
+const QUERY_DEFAULTS = {
+  staleTime: 5 * 60_000,
+  gcTime: 30 * 60_000,
+  refetchOnWindowFocus: false,
+  placeholderData: keepPreviousData,
+  retry: 2,
+  retryDelay: 1000,
+} as const;
+
+/* ── Stats (direct query — no RPC) ── */
 export function useInstagramStats(opts: QueryOpts) {
   const { account, dateFrom, dateTo } = opts;
   return useQuery<PlatformStats>({
     queryKey: ["instagram-stats", account, dateFrom, dateTo],
     queryFn: async () => {
-      const { data, error } = await (supabase as any).rpc("get_instagram_stats", {
-        p_account: account || null,
-        p_date_from: dateFrom || null,
-        p_date_to: dateTo || null,
-      });
+      let q = (supabase as any)
+        .from("instagram_posts")
+        .select("post_likes_count, post_comments_count, post_views_count");
+      if (account) q = q.eq("account_username", account);
+      if (dateFrom) q = q.gte("post_timestamp", dateFrom);
+      if (dateTo) q = q.lte("post_timestamp", dateTo);
+      const { data, error } = await q;
       if (error) throw error;
-      return data as PlatformStats;
+      const posts = data || [];
+      return {
+        total_posts: posts.length,
+        total_likes: posts.reduce((s: number, p: any) => s + (p.post_likes_count || 0), 0),
+        total_comments: posts.reduce((s: number, p: any) => s + (p.post_comments_count || 0), 0),
+        total_shares: 0,
+        total_views: posts.reduce((s: number, p: any) => s + (p.post_views_count || 0), 0),
+      };
     },
-    staleTime: 5 * 60_000,
-    gcTime: 30 * 60_000,
-    refetchOnWindowFocus: false,
-    placeholderData: keepPreviousData,
+    ...QUERY_DEFAULTS,
   });
 }
 
@@ -95,7 +110,7 @@ export function useInstagramComments(opts: CommentOpts) {
       if (error) throw error;
       const rows = (comments || []) as InstagramCommentRow[];
 
-      // Batch-fetch parent post info (including thumbnail)
+      // Batch-fetch parent post info
       const postIds = [...new Set(rows.map((c) => c.post_id).filter(Boolean))] as string[];
       const postMap = new Map<string, { text: string; url: string; thumbnail: string }>();
       if (postIds.length > 0) {
@@ -133,48 +148,59 @@ export function useInstagramComments(opts: CommentOpts) {
     staleTime: 60_000,
     gcTime: 30 * 60_000,
     refetchOnWindowFocus: false,
+    retry: 2,
+    retryDelay: 1000,
   });
 }
 
-/* ── Comments Per Day (RPC) ── */
+/* ── Comments Per Day (from posts table) ── */
 export function useInstagramCommentsPerDay(opts: QueryOpts) {
   const { account, dateFrom, dateTo } = opts;
   return useQuery<ChartPoint[]>({
     queryKey: ["instagram-comments-per-day", account, dateFrom, dateTo],
     queryFn: async () => {
-      const { data, error } = await (supabase as any).rpc("get_instagram_comments_per_day", {
-        p_account: account || null,
-        p_date_from: dateFrom || null,
-        p_date_to: dateTo || null,
-      });
+      let q = (supabase as any)
+        .from("instagram_posts")
+        .select("post_timestamp, post_comments_count");
+      if (account) q = q.eq("account_username", account);
+      if (dateFrom) q = q.gte("post_timestamp", dateFrom);
+      if (dateTo) q = q.lte("post_timestamp", dateTo);
+      const { data, error } = await q;
       if (error) throw error;
-      return (data || []) as ChartPoint[];
+      const perDay: Record<string, number> = {};
+      for (const row of data || []) {
+        const day = row.post_timestamp?.split("T")[0];
+        if (day) perDay[day] = (perDay[day] || 0) + (row.post_comments_count || 0);
+      }
+      return Object.entries(perDay)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([date, count]) => ({ date, count }));
     },
-    staleTime: 5 * 60_000,
-    gcTime: 30 * 60_000,
-    refetchOnWindowFocus: false,
-    placeholderData: keepPreviousData,
+    ...QUERY_DEFAULTS,
   });
 }
 
-/* ── Top Posts (RPC) ── */
+/* ── Top Posts (direct query) ── */
 export function useInstagramTopPosts(opts: QueryOpts & { limit?: number }) {
   const { account, dateFrom, dateTo, limit = 10 } = opts;
   return useQuery<TopPost[]>({
     queryKey: ["instagram-top-posts", account, dateFrom, dateTo, limit],
     queryFn: async () => {
-      const { data, error } = await (supabase as any).rpc("get_instagram_top_posts", {
-        p_account: account || null,
-        p_date_from: dateFrom || null,
-        p_date_to: dateTo || null,
-        p_limit: limit,
-      });
+      let q = (supabase as any)
+        .from("instagram_posts")
+        .select("post_id, post_caption, post_url, post_likes_count, post_comments_count, post_views_count, account_username, account_name_ar")
+        .order("post_comments_count", { ascending: false })
+        .limit(limit);
+      if (account) q = q.eq("account_username", account);
+      if (dateFrom) q = q.gte("post_timestamp", dateFrom);
+      if (dateTo) q = q.lte("post_timestamp", dateTo);
+      const { data, error } = await q;
       if (error) throw error;
       return ((data || []) as any[]).map((p) => ({
         id: p.post_id,
         text: p.post_caption || "",
         url: p.post_url || "",
-        engagement: p.engagement || 0,
+        engagement: (p.post_comments_count || 0) + (p.post_likes_count || 0),
         likes: p.post_likes_count || 0,
         comments: p.post_comments_count || 0,
         views: p.post_views_count || 0,
@@ -183,54 +209,60 @@ export function useInstagramTopPosts(opts: QueryOpts & { limit?: number }) {
         platform: "instagram" as const,
       }));
     },
-    staleTime: 5 * 60_000,
-    gcTime: 30 * 60_000,
-    refetchOnWindowFocus: false,
-    placeholderData: keepPreviousData,
+    ...QUERY_DEFAULTS,
   });
 }
 
-/* ── Posts Per Day (RPC) ── */
+/* ── Posts Per Day (direct query) ── */
 export function useInstagramPostsPerDay(opts: QueryOpts) {
   const { account, dateFrom, dateTo } = opts;
   return useQuery<ChartPoint[]>({
     queryKey: ["instagram-posts-per-day", account, dateFrom, dateTo],
     queryFn: async () => {
-      const { data, error } = await (supabase as any).rpc("get_instagram_posts_per_day", {
-        p_account: account || null,
-        p_date_from: dateFrom || null,
-        p_date_to: dateTo || null,
-      });
+      let q = (supabase as any)
+        .from("instagram_posts")
+        .select("post_timestamp");
+      if (account) q = q.eq("account_username", account);
+      if (dateFrom) q = q.gte("post_timestamp", dateFrom);
+      if (dateTo) q = q.lte("post_timestamp", dateTo);
+      const { data, error } = await q;
       if (error) throw error;
-      return (data || []) as ChartPoint[];
+      const perDay: Record<string, number> = {};
+      for (const row of data || []) {
+        const day = row.post_timestamp?.split("T")[0];
+        if (day) perDay[day] = (perDay[day] || 0) + 1;
+      }
+      return Object.entries(perDay)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([date, count]) => ({ date, count }));
     },
-    staleTime: 5 * 60_000,
-    gcTime: 30 * 60_000,
-    refetchOnWindowFocus: false,
-    placeholderData: keepPreviousData,
+    ...QUERY_DEFAULTS,
   });
 }
 
-/* ── Comments Per Account (RPC) ── */
+/* ── Comments Per Account (from posts table) ── */
 export function useInstagramCommentsPerAccount(opts: { dateFrom?: string; dateTo?: string }) {
   const { dateFrom, dateTo } = opts;
   return useQuery<AccountCount[]>({
     queryKey: ["instagram-comments-per-account", dateFrom, dateTo],
     queryFn: async () => {
-      const { data, error } = await (supabase as any).rpc("get_instagram_comments_per_account", {
-        p_date_from: dateFrom || null,
-        p_date_to: dateTo || null,
-      });
+      let q = (supabase as any)
+        .from("instagram_posts")
+        .select("account_username, account_name_ar, post_comments_count");
+      if (dateFrom) q = q.gte("post_timestamp", dateFrom);
+      if (dateTo) q = q.lte("post_timestamp", dateTo);
+      const { data, error } = await q;
       if (error) throw error;
-      return ((data || []) as any[]).map((r) => ({
-        account: r.account_username || "",
-        accountAr: r.account_name_ar || "",
-        count: r.count || 0,
-      }));
+      const counts: Record<string, { ar: string; count: number }> = {};
+      for (const row of data || []) {
+        const acc = row.account_username || "";
+        if (!counts[acc]) counts[acc] = { ar: row.account_name_ar || "", count: 0 };
+        counts[acc].count += row.post_comments_count || 0;
+      }
+      return Object.entries(counts)
+        .map(([account, { ar, count }]) => ({ account, accountAr: ar, count }))
+        .sort((a, b) => b.count - a.count);
     },
-    staleTime: 5 * 60_000,
-    gcTime: 30 * 60_000,
-    refetchOnWindowFocus: false,
-    placeholderData: keepPreviousData,
+    ...QUERY_DEFAULTS,
   });
 }

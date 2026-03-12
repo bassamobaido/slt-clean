@@ -8,6 +8,15 @@ const TABLE_MAP: Record<Exclude<Platform, "x">, { table: string; textCol: string
   youtube: { table: "youtube_data", textCol: "comment_text", dateCol: "comment_published_at", accountCol: "account_name" },
 };
 
+const QUERY_DEFAULTS = {
+  staleTime: 5 * 60_000,
+  gcTime: 30 * 60_000,
+  refetchOnWindowFocus: false,
+  placeholderData: keepPreviousData,
+  retry: 2,
+  retryDelay: 1000,
+} as const;
+
 interface Opts {
   platform: Exclude<Platform, "x">;
   account?: string;
@@ -18,6 +27,8 @@ interface Opts {
 export function useCommentTexts(opts: Opts) {
   const { platform, account, dateFrom, dateTo } = opts;
   const cfg = TABLE_MAP[platform];
+  // YouTube: smaller limit to avoid slow queries on 400K+ table
+  const limit = platform === "youtube" ? 1000 : 5000;
 
   return useQuery<string[]>({
     queryKey: ["comment-texts", platform, account, dateFrom, dateTo],
@@ -26,7 +37,7 @@ export function useCommentTexts(opts: Opts) {
         .from(cfg.table)
         .select(cfg.textCol)
         .order(cfg.dateCol, { ascending: false })
-        .limit(5000);
+        .limit(limit);
 
       if (account) q = q.eq(cfg.accountCol, account);
       if (dateFrom) q = q.gte(cfg.dateCol, dateFrom);
@@ -36,27 +47,26 @@ export function useCommentTexts(opts: Opts) {
       if (error) throw error;
       return (data || []).map((r: any) => r[cfg.textCol]).filter(Boolean) as string[];
     },
-    staleTime: 5 * 60_000,
-    gcTime: 30 * 60_000,
-    refetchOnWindowFocus: false,
-    placeholderData: keepPreviousData,
+    ...QUERY_DEFAULTS,
   });
 }
 
-/** Fetch from ALL platforms combined */
+/** Fetch from ALL platforms combined — sequential to avoid connection exhaustion */
 export function useAllCommentTexts(dateFrom?: string, dateTo?: string) {
   return useQuery<string[]>({
     queryKey: ["comment-texts-all", dateFrom, dateTo],
     queryFn: async () => {
       const results: string[] = [];
 
+      // Sequential: TikTok → Instagram → YouTube
       for (const platform of ["tiktok", "instagram", "youtube"] as const) {
         const cfg = TABLE_MAP[platform];
+        const limit = platform === "youtube" ? 500 : 2000;
         let q = (supabase as any)
           .from(cfg.table)
           .select(cfg.textCol)
           .order(cfg.dateCol, { ascending: false })
-          .limit(2000);
+          .limit(limit);
 
         if (dateFrom) q = q.gte(cfg.dateCol, dateFrom);
         if (dateTo) q = q.lte(cfg.dateCol, dateTo);
@@ -69,9 +79,6 @@ export function useAllCommentTexts(dateFrom?: string, dateTo?: string) {
 
       return results;
     },
-    staleTime: 5 * 60_000,
-    gcTime: 30 * 60_000,
-    refetchOnWindowFocus: false,
-    placeholderData: keepPreviousData,
+    ...QUERY_DEFAULTS,
   });
 }

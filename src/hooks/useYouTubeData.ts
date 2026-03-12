@@ -15,24 +15,38 @@ interface QueryOpts {
   dateTo?: string;
 }
 
-/* ── Stats (RPC) ── */
+const QUERY_DEFAULTS = {
+  staleTime: 5 * 60_000,
+  gcTime: 30 * 60_000,
+  refetchOnWindowFocus: false,
+  placeholderData: keepPreviousData,
+  retry: 2,
+  retryDelay: 1000,
+} as const;
+
+/* ── Stats (head:true count only — no full table scan) ── */
 export function useYouTubeStats(opts: QueryOpts) {
   const { account, dateFrom, dateTo } = opts;
   return useQuery<PlatformStats>({
     queryKey: ["youtube-stats", account, dateFrom, dateTo],
     queryFn: async () => {
-      const { data, error } = await (supabase as any).rpc("get_youtube_stats", {
-        p_account: account || null,
-        p_date_from: dateFrom || null,
-        p_date_to: dateTo || null,
-      });
+      let q = (supabase as any)
+        .from("youtube_data")
+        .select("comment_id", { count: "exact", head: true });
+      if (account) q = q.eq("account_name", account);
+      if (dateFrom) q = q.gte("comment_published_at", dateFrom);
+      if (dateTo) q = q.lte("comment_published_at", dateTo);
+      const { count, error } = await q;
       if (error) throw error;
-      return data as PlatformStats;
+      return {
+        total_posts: 0,
+        total_comments: count ?? 0,
+        total_likes: 0,
+        total_shares: 0,
+        total_views: 0,
+      };
     },
-    staleTime: 5 * 60_000,
-    gcTime: 30 * 60_000,
-    refetchOnWindowFocus: false,
-    placeholderData: keepPreviousData,
+    ...QUERY_DEFAULTS,
   });
 }
 
@@ -119,83 +133,91 @@ export function useYouTubeComments(opts: CommentOpts) {
     staleTime: 60_000,
     gcTime: 30 * 60_000,
     refetchOnWindowFocus: false,
+    retry: 2,
+    retryDelay: 1000,
   });
 }
 
-/* ── Comments Per Day (RPC) ── */
-export function useYouTubeCommentsPerDay(opts: QueryOpts) {
-  const { account, dateFrom, dateTo } = opts;
+/* ── Comments Per Day (skip for YouTube — too heavy to scan 400K rows) ── */
+export function useYouTubeCommentsPerDay(_opts: QueryOpts) {
   return useQuery<ChartPoint[]>({
-    queryKey: ["youtube-comments-per-day", account, dateFrom, dateTo],
-    queryFn: async () => {
-      const { data, error } = await (supabase as any).rpc("get_youtube_comments_per_day", {
-        p_account: account || null,
-        p_date_from: dateFrom || null,
-        p_date_to: dateTo || null,
-      });
-      if (error) throw error;
-      return (data || []) as ChartPoint[];
-    },
-    staleTime: 5 * 60_000,
-    gcTime: 30 * 60_000,
-    refetchOnWindowFocus: false,
-    placeholderData: keepPreviousData,
+    queryKey: ["youtube-comments-per-day", "disabled"],
+    queryFn: async () => [],
+    enabled: false,
+    ...QUERY_DEFAULTS,
   });
 }
 
-/* ── Top Videos (RPC) ── */
+/* ── Top Videos (lightweight: fetch 10 most-commented unique videos) ── */
 export function useYouTubeTopPosts(opts: QueryOpts & { limit?: number }) {
   const { account, dateFrom, dateTo, limit = 10 } = opts;
   return useQuery<TopPost[]>({
     queryKey: ["youtube-top-posts", account, dateFrom, dateTo, limit],
     queryFn: async () => {
-      const { data, error } = await (supabase as any).rpc("get_youtube_top_posts_sorted", {
-        p_account: account || null,
-        p_date_from: dateFrom || null,
-        p_date_to: dateTo || null,
-        p_limit: limit,
-      });
+      // Fetch a batch of recent comments to extract unique video info
+      let q = (supabase as any)
+        .from("youtube_data")
+        .select("video_id, video_title, video_url, video_view_count, video_like_count, video_comment_count, video_thumbnail_url, account_name")
+        .order("comment_published_at", { ascending: false })
+        .limit(500);
+      if (account) q = q.eq("account_name", account);
+      if (dateFrom) q = q.gte("comment_published_at", dateFrom);
+      if (dateTo) q = q.lte("comment_published_at", dateTo);
+      const { data, error } = await q;
       if (error) throw error;
-      return ((data || []) as any[]).map((p) => ({
-        id: p.video_id,
-        text: p.video_title || "",
-        url: p.video_url || "",
-        engagement: p.engagement || 0,
-        likes: p.video_like_count || 0,
-        comments: p.video_comment_count || 0,
-        views: p.video_view_count || 0,
-        account: p.account_name || "",
-        accountAr: p.account_name || "",
-        platform: "youtube" as const,
-      }));
+
+      // Deduplicate by video_id and pick highest engagement
+      const videoMap = new Map<string, any>();
+      for (const row of data || []) {
+        if (!row.video_id || videoMap.has(row.video_id)) continue;
+        videoMap.set(row.video_id, row);
+      }
+
+      return Array.from(videoMap.values())
+        .map((p) => ({
+          id: p.video_id,
+          text: p.video_title || "",
+          url: p.video_url || "",
+          engagement: (p.video_comment_count || 0) + (p.video_like_count || 0),
+          likes: p.video_like_count || 0,
+          comments: p.video_comment_count || 0,
+          views: p.video_view_count || 0,
+          account: p.account_name || "",
+          accountAr: p.account_name || "",
+          platform: "youtube" as const,
+        }))
+        .sort((a, b) => b.engagement - a.engagement)
+        .slice(0, limit);
     },
-    staleTime: 5 * 60_000,
-    gcTime: 30 * 60_000,
-    refetchOnWindowFocus: false,
-    placeholderData: keepPreviousData,
+    ...QUERY_DEFAULTS,
   });
 }
 
-/* ── Comments Per Account (RPC) ── */
+/* ── Comments Per Account (head:true counts — lightweight) ── */
 export function useYouTubeCommentsPerAccount(opts: { dateFrom?: string; dateTo?: string }) {
   const { dateFrom, dateTo } = opts;
   return useQuery<AccountCount[]>({
     queryKey: ["youtube-comments-per-account", dateFrom, dateTo],
     queryFn: async () => {
-      const { data, error } = await (supabase as any).rpc("get_youtube_comments_per_account", {
-        p_date_from: dateFrom || null,
-        p_date_to: dateTo || null,
-      });
-      if (error) throw error;
-      return ((data || []) as any[]).map((r) => ({
-        account: r.account_name || "",
-        accountAr: r.account_name || "",
-        count: r.count || 0,
-      }));
+      // Use known account names and count each with head:true
+      const accounts = ["ثمانية", "رياضة ثمانية", "مخرج ثمانية", "شركة ثمانية", "إذاعة ثمانية"];
+      const results: AccountCount[] = [];
+
+      for (const acc of accounts) {
+        let q = (supabase as any)
+          .from("youtube_data")
+          .select("comment_id", { count: "exact", head: true })
+          .eq("account_name", acc);
+        if (dateFrom) q = q.gte("comment_published_at", dateFrom);
+        if (dateTo) q = q.lte("comment_published_at", dateTo);
+        const { count } = await q;
+        if (count && count > 0) {
+          results.push({ account: acc, accountAr: acc, count });
+        }
+      }
+
+      return results.sort((a, b) => b.count - a.count);
     },
-    staleTime: 5 * 60_000,
-    gcTime: 30 * 60_000,
-    refetchOnWindowFocus: false,
-    placeholderData: keepPreviousData,
+    ...QUERY_DEFAULTS,
   });
 }

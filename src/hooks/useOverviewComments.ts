@@ -184,6 +184,8 @@ export function useOverviewCommentsCount(opts: Opts) {
     gcTime: 30 * 60_000,
     refetchOnWindowFocus: false,
     placeholderData: keepPreviousData,
+    retry: 2,
+    retryDelay: 1000,
   });
 }
 
@@ -333,5 +335,7 @@ export function useOverviewComments(opts: Opts) {
     staleTime: 30_000,
     gcTime: 30 * 60_000,
     refetchOnWindowFocus: false,
+    retry: 2,
+    retryDelay: 1000,
   });
 }

@@ -55,5 +55,7 @@ export function useProductPostIds(opts: Opts) {
     gcTime: 30 * 60_000,
     refetchOnWindowFocus: false,
     placeholderData: keepPreviousData,
+    retry: 2,
+    retryDelay: 1000,
   });
 }

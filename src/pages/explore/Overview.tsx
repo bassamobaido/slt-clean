@@ -7,7 +7,7 @@ import {
 import { MessageSquare, Eye, Heart, TrendingUp, ExternalLink, Compass } from "lucide-react";
 import { useDateRange } from "@/contexts/DateRangeContext";
 import DateRangeFilter from "@/components/explore/DateRangeFilter";
-import { useOverviewData, useCommentsTimeline, autoGranularity, type TimeGranularity } from "@/hooks/useOverviewData";
+import { useOverviewData, autoGranularity, groupTimeline, type TimeGranularity } from "@/hooks/useOverviewData";
 import { useOverviewComments, useOverviewCommentsCount } from "@/hooks/useOverviewComments";
 import { fmtNum, PLATFORM_COLORS, PLATFORM_LABELS, type Platform, type DrawerFilter } from "@/lib/db-types";
 import { PLATFORM_ICON_MAP } from "@/components/icons/PlatformIcons";
@@ -38,7 +38,13 @@ export default function Overview() {
   const smartGranularity = autoGranularity(dateRange.from, dateRange.to);
   const [manualGranularity, setManualGranularity] = useState<TimeGranularity | null>(null);
   const activeGranularity = manualGranularity || smartGranularity;
-  const { data: commentsTimeline } = useCommentsTimeline(dateRange.from, dateRange.to, activeGranularity);
+
+  // Group timeline from unified data
+  const commentsTimeline = useMemo(
+    () => data?.timeline ? groupTimeline(data.timeline, activeGranularity) : undefined,
+    [data?.timeline, activeGranularity]
+  );
+
   const { data: productMentions, isLoading: productsLoading } = useProductMentions({
     platform: "all", dateFrom: dateRange.from, dateTo: dateRange.to,
   });
@@ -87,7 +93,7 @@ export default function Overview() {
               <div className={`p-2.5 rounded-xl ${kpi.bg} w-fit mb-3`}>
                 <Icon className={`w-4 h-4 ${kpi.color}`} strokeWidth={1.8} />
               </div>
-              {isLoading ? (
+              {isLoading && !data ? (
                 <Skeleton className="h-7 w-20 mb-1" />
               ) : (
                 <div className="text-2xl font-bold text-foreground/90 mb-1 counter-animate" dir="ltr">
@@ -118,7 +124,7 @@ export default function Overview() {
                   <span className="text-[13px] font-bold text-foreground/80">{PLATFORM_LABELS[key]}</span>
                   <ExternalLink className="w-3 h-3 text-muted-foreground/20 mr-auto group-hover:text-muted-foreground/50 transition-colors" />
                 </div>
-                {isLoading ? (
+                {isLoading && !data ? (
                   <div className="space-y-2">
                     <Skeleton className="h-4 w-16" />
                     <Skeleton className="h-4 w-24" />
