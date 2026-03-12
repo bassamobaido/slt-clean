@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   AreaChart, Area, XAxis, YAxis,
@@ -8,13 +8,13 @@ import { MessageSquare, Eye, Heart, TrendingUp, ExternalLink, Compass } from "lu
 import { useDateRange } from "@/contexts/DateRangeContext";
 import DateRangeFilter from "@/components/explore/DateRangeFilter";
 import { useOverviewData } from "@/hooks/useOverviewData";
-import { useOverviewComments } from "@/hooks/useOverviewComments";
+import { useOverviewComments, useOverviewCommentsCount } from "@/hooks/useOverviewComments";
 import { fmtNum, PLATFORM_COLORS, PLATFORM_LABELS, type Platform, type DrawerFilter } from "@/lib/db-types";
 import { PLATFORM_ICON_MAP } from "@/components/icons/PlatformIcons";
 import PageExplainer from "@/components/PageExplainer";
 import WordCloud from "@/components/explore/WordCloud";
 import ProductChart from "@/components/explore/ProductChart";
-import CommentsDrawer from "@/components/explore/CommentsDrawer";
+import CommentsDrawer, { type DrawerSort } from "@/components/explore/CommentsDrawer";
 import { useAllCommentTexts } from "@/hooks/useCommentTexts";
 import { useProductMentions } from "@/hooks/useProductMentions";
 
@@ -33,11 +33,16 @@ export default function Overview() {
 
   // Drawer state
   const [drawerFilter, setDrawerFilter] = useState<DrawerFilter | null>(null);
-  const { data: drawerData, isLoading: drawerLoading } = useOverviewComments({
-    filter: drawerFilter,
-    dateFrom: dateRange.from,
-    dateTo: dateRange.to,
-  });
+  const [drawerSort, setDrawerSort] = useState<DrawerSort>("newest");
+
+  const drawerOpts = { filter: drawerFilter, dateFrom: dateRange.from, dateTo: dateRange.to, sort: drawerSort };
+  const drawerQ = useOverviewComments(drawerOpts);
+  const { data: drawerTotal } = useOverviewCommentsCount(drawerOpts);
+
+  const allDrawerComments = useMemo(
+    () => drawerQ.data?.pages.flatMap((p) => p.items) || [],
+    [drawerQ.data]
+  );
 
   const platformCards: { key: Platform; path: string }[] = [
     { key: "tiktok", path: "/explore/tiktok" },
@@ -255,9 +260,17 @@ export default function Overview() {
         open={!!drawerFilter}
         onClose={() => setDrawerFilter(null)}
         title={drawerFilter?.label || ""}
-        comments={drawerData?.items || []}
-        total={drawerData?.total || 0}
-        isLoading={drawerLoading}
+        comments={allDrawerComments}
+        total={drawerTotal || 0}
+        isLoading={drawerQ.isLoading}
+        hasMore={!!drawerQ.hasNextPage}
+        isFetchingMore={drawerQ.isFetchingNextPage}
+        onLoadMore={() => drawerQ.fetchNextPage()}
+        sort={drawerSort}
+        onSortChange={setDrawerSort}
+        filterDetails={drawerFilter?.label}
+        error={drawerQ.error as Error | undefined}
+        onRetry={() => drawerQ.refetch()}
       />
     </div>
   );

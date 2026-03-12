@@ -3,7 +3,7 @@ import { useDateRange } from "@/contexts/DateRangeContext";
 import DateRangeFilter from "@/components/explore/DateRangeFilter";
 import CommentsPanel, { type CommentSort } from "@/components/explore/CommentsPanel";
 import AnalyticsPanel from "@/components/explore/AnalyticsPanel";
-import CommentsDrawer from "@/components/explore/CommentsDrawer";
+import CommentsDrawer, { type DrawerSort } from "@/components/explore/CommentsDrawer";
 import PageExplainer from "@/components/PageExplainer";
 import type {
   Platform, AccountOption, PlatformStats,
@@ -46,8 +46,15 @@ interface PlatformPageProps {
   /* Drawer hooks */
   drawerComments?: InfiniteCommentResult;
   drawerLoading: boolean;
+  drawerHasMore?: boolean;
+  drawerFetchingMore?: boolean;
+  onDrawerLoadMore?: () => void;
   drawerFilter: DrawerFilter | null;
   onDrawerFilterChange: (f: DrawerFilter | null) => void;
+  drawerSort?: DrawerSort;
+  onDrawerSortChange?: (s: DrawerSort) => void;
+  drawerError?: Error | null;
+  onDrawerRetry?: () => void;
   /* Word Cloud */
   commentTexts?: string[];
   commentTextsLoading?: boolean;
@@ -62,7 +69,9 @@ export default function PlatformPage({
   commentsResult, commentsLoading, commentsFetchingMore, commentsHasMore, fetchMoreComments,
   commentsPerDay, topPosts, postsPerDay, commentsPerAccount, chartsLoading,
   account, onAccountChange, search, onSearchChange, sort, onSortChange,
-  drawerComments, drawerLoading, drawerFilter, onDrawerFilterChange,
+  drawerComments, drawerLoading, drawerHasMore, drawerFetchingMore, onDrawerLoadMore,
+  drawerFilter, onDrawerFilterChange, drawerSort, onDrawerSortChange,
+  drawerError, onDrawerRetry,
   commentTexts, commentTextsLoading,
   productMentions, productMentionsLoading,
 }: PlatformPageProps) {
@@ -176,6 +185,14 @@ export default function PlatformPage({
         comments={allDrawerComments}
         total={totalDrawerComments}
         isLoading={drawerLoading}
+        hasMore={drawerHasMore}
+        isFetchingMore={drawerFetchingMore}
+        onLoadMore={onDrawerLoadMore}
+        sort={drawerSort}
+        onSortChange={onDrawerSortChange}
+        filterDetails={drawerFilter?.label}
+        error={drawerError as Error | undefined}
+        onRetry={onDrawerRetry}
       />
     </div>
   );

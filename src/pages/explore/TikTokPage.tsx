@@ -10,6 +10,7 @@ import {
   useTikTokCommentsPerAccount,
 } from "@/hooks/useTikTokData";
 import type { CommentSort } from "@/components/explore/CommentsPanel";
+import type { DrawerSort } from "@/components/explore/CommentsDrawer";
 import type { DrawerFilter } from "@/lib/db-types";
 import { TIKTOK_ACCOUNTS } from "@/lib/db-types";
 import { TikTokIcon } from "@/components/icons/PlatformIcons";
@@ -23,6 +24,7 @@ export default function TikTokPage() {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [sort, setSort] = useState<CommentSort>("newest");
   const [drawerFilter, setDrawerFilter] = useState<DrawerFilter | null>(null);
+  const [drawerSort, setDrawerSort] = useState<DrawerSort>("newest");
 
   // Debounce search
   const [timer, setTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
@@ -66,6 +68,7 @@ export default function TikTokPage() {
   // Drawer comments
   const drawerQ = useTikTokComments({
     ...qOpts,
+    sort: drawerSort as CommentSort,
     filterDate: drawerFilter?.type === "date" ? drawerFilter.date : undefined,
     filterPostId: drawerFilter?.type === "post" ? drawerFilter.postId : undefined,
     account: drawerFilter?.type === "account" ? drawerFilter.account : qOpts.account,
@@ -98,8 +101,15 @@ export default function TikTokPage() {
       onSortChange={setSort}
       drawerComments={drawerQ.data}
       drawerLoading={drawerQ.isLoading}
+      drawerHasMore={!!drawerQ.hasNextPage}
+      drawerFetchingMore={drawerQ.isFetchingNextPage}
+      onDrawerLoadMore={() => drawerQ.fetchNextPage()}
       drawerFilter={drawerFilter}
       onDrawerFilterChange={setDrawerFilter}
+      drawerSort={drawerSort}
+      onDrawerSortChange={setDrawerSort}
+      drawerError={drawerQ.error}
+      onDrawerRetry={() => drawerQ.refetch()}
       commentTexts={commentTexts}
       commentTextsLoading={commentTextsLoading}
       productMentions={productMentions}

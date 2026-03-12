@@ -9,6 +9,7 @@ import {
   useYouTubeCommentsPerAccount,
 } from "@/hooks/useYouTubeData";
 import type { CommentSort } from "@/components/explore/CommentsPanel";
+import type { DrawerSort } from "@/components/explore/CommentsDrawer";
 import type { DrawerFilter } from "@/lib/db-types";
 import { YOUTUBE_ACCOUNTS } from "@/lib/db-types";
 import { YouTubeIcon } from "@/components/icons/PlatformIcons";
@@ -22,6 +23,7 @@ export default function YouTubePage() {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [sort, setSort] = useState<CommentSort>("newest");
   const [drawerFilter, setDrawerFilter] = useState<DrawerFilter | null>(null);
+  const [drawerSort, setDrawerSort] = useState<DrawerSort>("newest");
 
   const [timer, setTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
   const handleSearch = useCallback((v: string) => {
@@ -59,6 +61,7 @@ export default function YouTubePage() {
 
   const drawerQ = useYouTubeComments({
     ...qOpts,
+    sort: drawerSort as CommentSort,
     filterDate: drawerFilter?.type === "date" ? drawerFilter.date : undefined,
     filterPostId: drawerFilter?.type === "post" ? drawerFilter.postId : undefined,
     account: drawerFilter?.type === "account" ? drawerFilter.account : qOpts.account,
@@ -91,8 +94,15 @@ export default function YouTubePage() {
       onSortChange={setSort}
       drawerComments={drawerQ.data}
       drawerLoading={drawerQ.isLoading}
+      drawerHasMore={!!drawerQ.hasNextPage}
+      drawerFetchingMore={drawerQ.isFetchingNextPage}
+      onDrawerLoadMore={() => drawerQ.fetchNextPage()}
       drawerFilter={drawerFilter}
       onDrawerFilterChange={setDrawerFilter}
+      drawerSort={drawerSort}
+      onDrawerSortChange={setDrawerSort}
+      drawerError={drawerQ.error}
+      onDrawerRetry={() => drawerQ.refetch()}
       commentTexts={commentTexts}
       commentTextsLoading={commentTextsLoading}
       productMentions={productMentions}
