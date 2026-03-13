@@ -3,6 +3,7 @@ import { useDateRange } from "@/contexts/DateRangeContext";
 import DateRangeFilter from "@/components/explore/DateRangeFilter";
 import CommentsPanel, { type CommentSort } from "@/components/explore/CommentsPanel";
 import AnalyticsPanel from "@/components/explore/AnalyticsPanel";
+import SentimentPanel from "@/components/explore/SentimentPanel";
 import CommentsDrawer, { type DrawerSort } from "@/components/explore/CommentsDrawer";
 import PageExplainer from "@/components/PageExplainer";
 import type {
@@ -11,6 +12,8 @@ import type {
   EnrichedComment, DrawerFilter,
 } from "@/lib/db-types";
 import type { ProductMention } from "@/hooks/useProductMentions";
+import type { SentimentAggregation } from "@/hooks/useSentimentData";
+import { filterAnalyzedComments } from "@/hooks/useSentimentData";
 import { PLATFORM_LABELS, PLATFORM_COLORS } from "@/lib/db-types";
 import { getAccountAvatar } from "@/lib/accountAvatars";
 
@@ -61,6 +64,9 @@ interface PlatformPageProps {
   /* Product Mentions */
   productMentions?: ProductMention[];
   productMentionsLoading?: boolean;
+  /* Sentiment (TikTok only) */
+  sentimentData?: SentimentAggregation;
+  sentimentLoading?: boolean;
 }
 
 export default function PlatformPage({
@@ -74,8 +80,12 @@ export default function PlatformPage({
   drawerError, onDrawerRetry,
   commentTexts, commentTextsLoading,
   productMentions, productMentionsLoading,
+  sentimentData, sentimentLoading,
 }: PlatformPageProps) {
   const color = PLATFORM_COLORS[platform];
+  const hasSentiment = !!sentimentData || !!sentimentLoading;
+  const [activeTab, setActiveTab] = useState<"analytics" | "sentiment">("analytics");
+
   const allComments = useMemo(
     () => commentsResult?.pages.flatMap((p) => p.items) || [],
     [commentsResult]
@@ -87,6 +97,21 @@ export default function PlatformPage({
     [drawerComments]
   );
   const totalDrawerComments = drawerComments?.pages[0]?.total || 0;
+
+  // Sentiment-filtered drawer comments (when clicking sentiment charts)
+  const sentimentDrawerComments = useMemo(() => {
+    if (!sentimentData || !drawerFilter) return [];
+    const ft = drawerFilter.type;
+    if (ft === "sentiment" || ft === "hostility" || ft === "relevance" || ft === "topic" || ft === "technical_issue" || ft === "name_mentioned" || ft === "word") {
+      const value = "value" in drawerFilter ? drawerFilter.value : ("word" in drawerFilter ? drawerFilter.word : "");
+      return filterAnalyzedComments(sentimentData.rows, ft, value);
+    }
+    return [];
+  }, [sentimentData, drawerFilter]);
+
+  const isSentimentFilter = drawerFilter && ["sentiment", "hostility", "relevance", "topic", "technical_issue", "name_mentioned"].includes(drawerFilter.type);
+  // Word filter from sentiment tab word clouds
+  const isSentimentWordFilter = drawerFilter?.type === "word" && activeTab === "sentiment";
 
   return (
     <div className="space-y-4">
@@ -137,10 +162,43 @@ export default function PlatformPage({
         })}
       </div>
 
+      {/* Tab Switcher (only when sentiment data is available) */}
+      {hasSentiment && (
+        <div className="flex items-center gap-1 bg-muted/5 border border-border/40 rounded-lg p-0.5 w-fit">
+          <button
+            onClick={() => setActiveTab("analytics")}
+            className={`px-3 py-1.5 rounded-md text-[11px] font-bold transition-all ${
+              activeTab === "analytics"
+                ? "bg-card text-foreground shadow-sm"
+                : "text-muted-foreground/50 hover:text-foreground/70"
+            }`}
+          >
+            تحليل التفاعل
+          </button>
+          <button
+            onClick={() => setActiveTab("sentiment")}
+            className={`px-3 py-1.5 rounded-md text-[11px] font-bold transition-all ${
+              activeTab === "sentiment"
+                ? "bg-card text-foreground shadow-sm"
+                : "text-muted-foreground/50 hover:text-foreground/70"
+            }`}
+          >
+            تحليل الانطباعات
+          </button>
+        </div>
+      )}
+
       {/* Split Layout */}
       <div className="flex gap-4 min-h-[600px]">
-        {/* Left: Analytics (40%) */}
+        {/* Left: Analytics or Sentiment (40%) */}
         <div className="w-[40%] shrink-0">
+          {activeTab === "sentiment" && hasSentiment ? (
+            <SentimentPanel
+              data={sentimentData}
+              isLoading={!!sentimentLoading}
+              onFilterClick={(f) => onDrawerFilterChange(f)}
+            />
+          ) : (
           <AnalyticsPanel
             platform={platform}
             stats={stats}
@@ -162,6 +220,7 @@ export default function PlatformPage({
                 : { type: "word", word: term, label: `منتج: ${name}` }
             )}
           />
+          )}
         </div>
 
         {/* Right: Comments (60%) */}
@@ -186,17 +245,17 @@ export default function PlatformPage({
         open={!!drawerFilter}
         onClose={() => onDrawerFilterChange(null)}
         title={drawerFilter?.label || ""}
-        comments={allDrawerComments}
-        total={totalDrawerComments}
-        isLoading={drawerLoading}
-        hasMore={drawerHasMore}
-        isFetchingMore={drawerFetchingMore}
-        onLoadMore={onDrawerLoadMore}
+        comments={isSentimentFilter || isSentimentWordFilter ? sentimentDrawerComments : allDrawerComments}
+        total={isSentimentFilter || isSentimentWordFilter ? sentimentDrawerComments.length : totalDrawerComments}
+        isLoading={isSentimentFilter || isSentimentWordFilter ? false : drawerLoading}
+        hasMore={isSentimentFilter || isSentimentWordFilter ? false : drawerHasMore}
+        isFetchingMore={isSentimentFilter || isSentimentWordFilter ? false : drawerFetchingMore}
+        onLoadMore={isSentimentFilter || isSentimentWordFilter ? undefined : onDrawerLoadMore}
         sort={drawerSort}
         onSortChange={onDrawerSortChange}
         filterDetails={drawerFilter?.label}
-        error={drawerError as Error | undefined}
-        onRetry={onDrawerRetry}
+        error={isSentimentFilter || isSentimentWordFilter ? undefined : (drawerError as Error | undefined)}
+        onRetry={isSentimentFilter || isSentimentWordFilter ? undefined : onDrawerRetry}
       />
     </div>
   );

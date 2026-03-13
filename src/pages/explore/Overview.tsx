@@ -14,9 +14,11 @@ import { PLATFORM_ICON_MAP } from "@/components/icons/PlatformIcons";
 import PageExplainer from "@/components/PageExplainer";
 import WordCloud from "@/components/explore/WordCloud";
 import ProductChart from "@/components/explore/ProductChart";
+import SentimentPanel from "@/components/explore/SentimentPanel";
 import CommentsDrawer, { type DrawerSort } from "@/components/explore/CommentsDrawer";
 import { useAllCommentTexts } from "@/hooks/useCommentTexts";
 import { useProductMentions } from "@/hooks/useProductMentions";
+import { useSentimentData, filterAnalyzedComments } from "@/hooks/useSentimentData";
 
 const GRANULARITY_OPTIONS: { key: TimeGranularity; label: string }[] = [
   { key: "day", label: "يوم" },
@@ -33,6 +35,8 @@ export default function Overview() {
   const { dateRange } = useDateRange();
   const { data, isLoading } = useOverviewData(dateRange.from, dateRange.to);
   const { data: allTexts, isLoading: textsLoading } = useAllCommentTexts(dateRange.from, dateRange.to);
+  const { data: sentimentData, isLoading: sentimentLoading } = useSentimentData();
+  const [overviewTab, setOverviewTab] = useState<"analytics" | "sentiment">("analytics");
 
   // Timeline granularity
   const smartGranularity = autoGranularity(dateRange.from, dateRange.to);
@@ -62,6 +66,20 @@ export default function Overview() {
     [drawerQ.data]
   );
 
+  // Sentiment-filtered drawer comments
+  const sentimentDrawerComments = useMemo(() => {
+    if (!sentimentData || !drawerFilter) return [];
+    const ft = drawerFilter.type;
+    if (ft === "sentiment" || ft === "hostility" || ft === "relevance" || ft === "topic" || ft === "technical_issue" || ft === "name_mentioned" || ft === "word") {
+      const value = "value" in drawerFilter ? drawerFilter.value : ("word" in drawerFilter ? drawerFilter.word : "");
+      return filterAnalyzedComments(sentimentData.rows, ft, value);
+    }
+    return [];
+  }, [sentimentData, drawerFilter]);
+
+  const isSentimentFilter = drawerFilter && ["sentiment", "hostility", "relevance", "topic", "technical_issue", "name_mentioned"].includes(drawerFilter.type);
+  const isSentimentWordFilter = drawerFilter?.type === "word" && overviewTab === "sentiment";
+
   const platformCards: { key: Platform; path: string }[] = [
     { key: "tiktok", path: "/explore/tiktok" },
     { key: "instagram", path: "/explore/instagram" },
@@ -79,6 +97,39 @@ export default function Overview() {
 
       <DateRangeFilter />
 
+      {/* Tab Switcher */}
+      <div className="flex items-center gap-1 bg-muted/5 border border-border/40 rounded-lg p-0.5 w-fit">
+        <button
+          onClick={() => setOverviewTab("analytics")}
+          className={`px-3 py-1.5 rounded-md text-[11px] font-bold transition-all ${
+            overviewTab === "analytics"
+              ? "bg-card text-foreground shadow-sm"
+              : "text-muted-foreground/50 hover:text-foreground/70"
+          }`}
+        >
+          تحليل التفاعل
+        </button>
+        <button
+          onClick={() => setOverviewTab("sentiment")}
+          className={`px-3 py-1.5 rounded-md text-[11px] font-bold transition-all ${
+            overviewTab === "sentiment"
+              ? "bg-card text-foreground shadow-sm"
+              : "text-muted-foreground/50 hover:text-foreground/70"
+          }`}
+        >
+          تحليل الانطباعات
+        </button>
+      </div>
+
+      {overviewTab === "sentiment" ? (
+        <SentimentPanel
+          data={sentimentData}
+          isLoading={sentimentLoading}
+          onFilterClick={(f) => setDrawerFilter(f)}
+          sampleNote="عيّنة من تعليقات تيك توك — ٩٦٣ تعليق"
+        />
+      ) : (
+      <>
       {/* Total KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
@@ -297,22 +348,25 @@ export default function Overview() {
         </div>
       )}
 
+      </>
+      )}
+
       {/* Comments Drawer */}
       <CommentsDrawer
         open={!!drawerFilter}
         onClose={() => setDrawerFilter(null)}
         title={drawerFilter?.label || ""}
-        comments={allDrawerComments}
-        total={drawerTotal || 0}
-        isLoading={drawerQ.isLoading}
-        hasMore={!!drawerQ.hasNextPage}
-        isFetchingMore={drawerQ.isFetchingNextPage}
-        onLoadMore={() => drawerQ.fetchNextPage()}
+        comments={isSentimentFilter || isSentimentWordFilter ? sentimentDrawerComments : allDrawerComments}
+        total={isSentimentFilter || isSentimentWordFilter ? sentimentDrawerComments.length : (drawerTotal || 0)}
+        isLoading={isSentimentFilter || isSentimentWordFilter ? false : drawerQ.isLoading}
+        hasMore={isSentimentFilter || isSentimentWordFilter ? false : !!drawerQ.hasNextPage}
+        isFetchingMore={isSentimentFilter || isSentimentWordFilter ? false : drawerQ.isFetchingNextPage}
+        onLoadMore={isSentimentFilter || isSentimentWordFilter ? undefined : () => drawerQ.fetchNextPage()}
         sort={drawerSort}
         onSortChange={setDrawerSort}
         filterDetails={drawerFilter?.label}
-        error={drawerQ.error as Error | undefined}
-        onRetry={() => drawerQ.refetch()}
+        error={isSentimentFilter || isSentimentWordFilter ? undefined : (drawerQ.error as Error | undefined)}
+        onRetry={isSentimentFilter || isSentimentWordFilter ? undefined : () => drawerQ.refetch()}
       />
     </div>
   );

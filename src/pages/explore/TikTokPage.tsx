@@ -17,6 +17,7 @@ import { TikTokIcon } from "@/components/icons/PlatformIcons";
 import { useCommentTexts } from "@/hooks/useCommentTexts";
 import { useProductMentions } from "@/hooks/useProductMentions";
 import { useProductPostIds } from "@/hooks/useProductPostIds";
+import { useSentimentData } from "@/hooks/useSentimentData";
 
 export default function TikTokPage() {
   const { dateRange } = useDateRange();
@@ -65,6 +66,9 @@ export default function TikTokPage() {
   const { data: productMentions, isLoading: productMentionsLoading } = useProductMentions({
     platform: "tiktok", account: qOpts.account, dateFrom: qOpts.dateFrom, dateTo: qOpts.dateTo,
   });
+
+  // Sentiment analysis (TikTok only)
+  const { data: sentimentData, isLoading: sentimentLoading } = useSentimentData();
 
   // Product → post_ids resolution for drawer
   const { data: productPostIds } = useProductPostIds({
@@ -124,6 +128,8 @@ export default function TikTokPage() {
       commentTextsLoading={commentTextsLoading}
       productMentions={productMentions}
       productMentionsLoading={productMentionsLoading}
+      sentimentData={sentimentData}
+      sentimentLoading={sentimentLoading}
     />
   );
 }

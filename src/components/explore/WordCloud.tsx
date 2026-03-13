@@ -144,6 +144,7 @@ function computeLayout(
   words: WordItem[],
   containerWidth: number,
   containerHeight: number,
+  customColors?: string[],
 ): PlacedWord[] {
   if (words.length === 0 || containerWidth <= 0 || containerHeight <= 0) return [];
 
@@ -183,7 +184,8 @@ function computeLayout(
     const ratio = maxCount === minCount ? 1 : (w.count - minCount) / (maxCount - minCount);
     const fontSize = minSize + (maxSize - minSize) * Math.pow(ratio, 0.7);
     const fontWeight = ratio > 0.5 ? 700 : ratio > 0.2 ? 600 : 400;
-    const color = BRAND_COLORS[i % BRAND_COLORS.length];
+    const palette = customColors || BRAND_COLORS;
+    const color = palette[i % palette.length];
     const wordWidth = estimateWidth(w.text, fontSize);
     const wordHeight = estimateHeight(fontSize);
 
@@ -235,6 +237,10 @@ interface Props {
   texts: string[];
   isLoading: boolean;
   onWordClick?: (word: string) => void;
+  colors?: string[];
+  title?: string;
+  containerBg?: string;
+  height?: number;
 }
 
 function toArabicNum(n: number): string {
@@ -242,12 +248,12 @@ function toArabicNum(n: number): string {
   return String(n).replace(/[0-9]/g, (d) => arabicDigits[+d]);
 }
 
-export default function WordCloud({ texts, isLoading, onWordClick }: Props) {
+export default function WordCloud({ texts, isLoading, onWordClick, colors, title, containerBg, height }: Props) {
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
   const [expanded, setExpanded] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
-  const CONTAINER_HEIGHT = 400;
+  const CONTAINER_HEIGHT = height || 400;
 
   const words = useMemo(() => analyzeComments(texts), [texts]);
 
@@ -291,14 +297,14 @@ export default function WordCloud({ texts, isLoading, onWordClick }: Props) {
   }, [expanded]);
 
   const placedWords = useMemo(
-    () => computeLayout(words, containerWidth, CONTAINER_HEIGHT),
-    [words, containerWidth]
+    () => computeLayout(words, containerWidth, CONTAINER_HEIGHT, colors),
+    [words, containerWidth, CONTAINER_HEIGHT, colors]
   );
 
   if (isLoading) {
     return (
       <div className="bg-card rounded-xl border border-border/40 p-4">
-        <h4 className="text-[12px] font-display font-bold text-foreground/70 mb-3">سحابة الكلمات</h4>
+        <h4 className="text-[12px] font-display font-bold text-foreground/70 mb-3">{title || "سحابة الكلمات"}</h4>
         <div className="h-[200px] flex items-center justify-center">
           <div className="animate-pulse flex flex-wrap gap-2 justify-center p-4">
             {Array.from({ length: 20 }).map((_, i) => (
@@ -320,13 +326,13 @@ export default function WordCloud({ texts, isLoading, onWordClick }: Props) {
   if (words.length === 0) return null;
 
   return (
-    <div className="bg-card rounded-xl border border-border/40 p-4">
+    <div className="bg-card rounded-xl border border-border/40 p-4" style={containerBg ? { backgroundColor: containerBg } : undefined}>
       <button
         onClick={() => setExpanded(!expanded)}
         className="flex items-center gap-2 w-full text-right mb-3"
       >
         <Cloud className="w-3.5 h-3.5 text-muted-foreground/40" />
-        <h4 className="text-[12px] font-display font-bold text-foreground/70 flex-1">سحابة الكلمات</h4>
+        <h4 className="text-[12px] font-display font-bold text-foreground/70 flex-1">{title || "سحابة الكلمات"}</h4>
         <svg
           className={`w-3 h-3 text-muted-foreground/30 transition-transform duration-200 ${expanded ? "rotate-180" : ""}`}
           viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
@@ -338,7 +344,8 @@ export default function WordCloud({ texts, isLoading, onWordClick }: Props) {
       {expanded && (
         <div
           ref={containerRef}
-          className="relative w-full overflow-hidden min-h-[400px] h-[400px]"
+          className="relative w-full overflow-hidden"
+          style={{ minHeight: CONTAINER_HEIGHT, height: CONTAINER_HEIGHT }}
         >
           {placedWords.map((w, i) => {
             const isHovered = hoveredIdx === i;

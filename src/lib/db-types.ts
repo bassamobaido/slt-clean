@@ -123,6 +123,9 @@ export interface EnrichedComment {
   parentPostThumbnail?: string;
   platform: Platform;
   accountName?: string;
+  sentimentLabel?: string;
+  hostilityLabel?: string;
+  overviewText?: string;
 }
 
 export interface ChartPoint {
@@ -154,7 +157,13 @@ export type DrawerFilter =
   | { type: "post"; postId: string; label: string }
   | { type: "account"; account: string; label: string }
   | { type: "word"; word: string; label: string }
-  | { type: "product"; productId: string; label: string };
+  | { type: "product"; productId: string; label: string }
+  | { type: "sentiment"; value: string; label: string }
+  | { type: "hostility"; value: string; label: string }
+  | { type: "relevance"; value: string; label: string }
+  | { type: "topic"; value: string; label: string }
+  | { type: "technical_issue"; value: string; label: string }
+  | { type: "name_mentioned"; value: string; label: string };
 
 export interface AccountOption {
   username: string;

@@ -75,6 +75,38 @@ export default function CommentCard({ comment }: { comment: EnrichedComment }) {
             {c.text}
           </p>
 
+          {/* Sentiment badges */}
+          {(c.sentimentLabel || c.hostilityLabel || c.overviewText) && (
+            <div className="flex flex-wrap items-center gap-1.5 mb-2">
+              {c.sentimentLabel && (
+                <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold text-white ${
+                  c.sentimentLabel === "positive" ? "bg-[#00C17A]" :
+                  c.sentimentLabel === "negative" ? "bg-[#EF4444]" :
+                  c.sentimentLabel === "mockery" ? "bg-[#F59E0B]" :
+                  "bg-[#6B7280]"
+                }`}>
+                  {c.sentimentLabel === "positive" ? "إيجابي" :
+                   c.sentimentLabel === "negative" ? "سلبي" :
+                   c.sentimentLabel === "mockery" ? "سخرية" : "محايد"}
+                </span>
+              )}
+              {c.hostilityLabel && c.hostilityLabel !== "none" && (
+                <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold text-white ${
+                  c.hostilityLabel === "high" ? "bg-[#EF4444]" :
+                  c.hostilityLabel === "medium" ? "bg-[#F97316]" :
+                  "bg-[#FBBF24]"
+                }`}>
+                  عدائية: {c.hostilityLabel === "high" ? "عالية" : c.hostilityLabel === "medium" ? "متوسطة" : "منخفضة"}
+                </span>
+              )}
+            </div>
+          )}
+          {c.overviewText && (
+            <p className="text-[10px] font-bold text-muted-foreground/40 leading-relaxed mb-2">
+              {c.overviewText}
+            </p>
+          )}
+
           {/* Likes & replies */}
           <div className="flex items-center gap-3 mb-2 flex-wrap">
             <span className="flex items-center gap-1 text-[10px] font-bold text-muted-foreground/40">
