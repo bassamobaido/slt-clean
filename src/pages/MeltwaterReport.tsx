@@ -251,7 +251,7 @@ const MeltwaterReport = () => {
     setAnalysisError('');
   };
 
-  // AI Analysis
+  // AI Analysis — parallel batches, skip-on-error, auto-save progress
   const handleStartAnalysis = async () => {
     if (!importedTweets) return;
 
@@ -267,28 +267,35 @@ const MeltwaterReport = () => {
     setAnalysisProgress(0);
     setAnalysisError('');
 
-    const BATCH_SIZE = 10;
+    const BATCH_SIZE = 5;
+    const PARALLEL = 3;
     const analyzed = [...importedTweets];
-    const totalBatches = Math.ceil(analyzed.length / BATCH_SIZE);
 
-    try {
-      for (let bi = 0; bi < totalBatches; bi++) {
-        const start = bi * BATCH_SIZE;
-        const batch = analyzed.slice(start, start + BATCH_SIZE);
-        const tweetsText = batch.map((t, i) => `[${i + 1}] ${t.text}`).join('\n');
+    // Build batch list: [ { startIdx, tweets[] }, ... ]
+    const batches: { startIdx: number; tweets: Tweet[] }[] = [];
+    for (let i = 0; i < analyzed.length; i += BATCH_SIZE) {
+      batches.push({ startIdx: i, tweets: analyzed.slice(i, i + BATCH_SIZE) });
+    }
 
-        const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${keys.openrouter}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: modelId,
-            messages: [
-              {
-                role: 'system',
-                content: `أنت محلل مشاعر متخصص في النصوص العربية. حلل التغريدات المرقمة وأرجع JSON فقط.
+    let completedBatches = 0;
+
+    // Single-batch analyzer
+    const analyzeBatch = async (batch: { startIdx: number; tweets: Tweet[] }) => {
+      const tweetsText = batch.tweets.map((t, i) => `[${i + 1}] ${t.text}`).join('\n');
+
+      const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${keys.openrouter}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: modelId,
+          max_tokens: 4096,
+          messages: [
+            {
+              role: 'system',
+              content: `أنت محلل مشاعر متخصص في النصوص العربية. حلل التغريدات المرقمة وأرجع JSON فقط.
 لكل تغريدة أرجع:
 - index: رقم التغريدة (يبدأ من 1)
 - sentiment: إيجابي أو سلبي أو محايد
@@ -296,51 +303,71 @@ const MeltwaterReport = () => {
 - keywords: أهم 2-4 كلمات مفتاحية
 أرجع JSON بالشكل: {"results":[{"index":1,"sentiment":"...","emotion":"...","keywords":["..."]},...]}
 أجب بصيغة JSON فقط. لا تكتب أي نص قبل أو بعد الـ JSON.`,
-              },
-              { role: 'user', content: tweetsText },
-            ],
-            response_format: { type: 'json_object' },
-            temperature: 0.1,
-          }),
-        });
+            },
+            { role: 'user', content: tweetsText },
+          ],
+          response_format: { type: 'json_object' },
+          temperature: 0.1,
+        }),
+      });
 
-        if (!res.ok) throw new Error(`API error: ${res.status}`);
+      if (!res.ok) throw new Error(`API error: ${res.status}`);
 
-        const data = await res.json();
-        const content = data.choices?.[0]?.message?.content || '{}';
-        const parsed = safeParseJSON(content);
-        const results = parsed.results || [];
+      const data = await res.json();
+      const content = data.choices?.[0]?.message?.content || '{}';
+      const parsed = safeParseJSON(content);
+      const results = parsed.results || [];
 
-        for (const r of results) {
-          const idx = start + (r.index - 1);
-          if (idx >= 0 && idx < analyzed.length) {
-            analyzed[idx] = {
-              ...analyzed[idx],
-              sentiment: r.sentiment || analyzed[idx].sentiment,
-              emotion: r.emotion || analyzed[idx].emotion,
-              keywords: Array.isArray(r.keywords) ? r.keywords : analyzed[idx].keywords,
-            };
-          }
+      for (const r of results) {
+        const idx = batch.startIdx + (r.index - 1);
+        if (idx >= 0 && idx < analyzed.length) {
+          analyzed[idx] = {
+            ...analyzed[idx],
+            sentiment: r.sentiment || analyzed[idx].sentiment,
+            emotion: r.emotion || analyzed[idx].emotion,
+            keywords: Array.isArray(r.keywords) ? r.keywords : analyzed[idx].keywords,
+          };
         }
+      }
+    };
 
-        setAnalysisProgress(Math.round(((bi + 1) / totalBatches) * 100));
+    // Parallel worker: pick next batch, run it, skip on error, repeat
+    let batchIndex = 0;
+    const processNext = async (): Promise<void> => {
+      const idx = batchIndex++;
+      if (idx >= batches.length) return;
+
+      try {
+        await analyzeBatch(batches[idx]);
+      } catch (err) {
+        console.error(`Batch ${idx + 1}/${batches.length} failed, skipping:`, err);
       }
 
-      setActiveTweets(analyzed);
+      completedBatches++;
+      setAnalysisProgress(Math.round((completedBatches / batches.length) * 100));
+      setActiveTweets([...analyzed]); // save progress after each batch
+      return processNext();
+    };
 
-      // Phase 2: Generate report insights
-      setAnalysisState('generating-report');
-      setAnalysisProgress(100);
+    // Run PARALLEL workers concurrently
+    await Promise.all(Array.from({ length: PARALLEL }, () => processNext()));
 
+    setActiveTweets([...analyzed]);
+
+    // Phase 2: Generate report insights
+    setAnalysisState('generating-report');
+    setAnalysisProgress(100);
+
+    try {
       const sentimentSummary = {
         positive: analyzed.filter(t => t.sentiment === 'إيجابي').length,
         negative: analyzed.filter(t => t.sentiment === 'سلبي').length,
         neutral: analyzed.filter(t => t.sentiment === 'محايد').length,
       };
-      const kwList = getTopKeywords(analyzed, 20);
+      const kwList = getTopKeywords(analyzed, 10);
       const emList = getTopEmotions(analyzed, 10);
-      const samplePos = analyzed.filter(t => t.sentiment === 'إيجابي').slice(0, 5).map(t => t.text);
-      const sampleNeg = analyzed.filter(t => t.sentiment === 'سلبي').slice(0, 5).map(t => t.text);
+      const samplePos = analyzed.filter(t => t.sentiment === 'إيجابي').slice(0, 3).map(t => t.text);
+      const sampleNeg = analyzed.filter(t => t.sentiment === 'سلبي').slice(0, 3).map(t => t.text);
 
       const reportPrompt = `أنت محلل بيانات متخصص في تحليل وسائل التواصل الاجتماعي لشركة ثمانية الإعلامية السعودية.
 
@@ -354,31 +381,16 @@ const MeltwaterReport = () => {
 أكثر الكلمات تكراراً: ${kwList.join('، ')}
 أكثر المشاعر: ${emList.join('، ')}
 
-عينة من التعليقات الإيجابية:
+عينة إيجابية:
 ${samplePos.map((t, i) => `${i + 1}. ${t}`).join('\n')}
 
-عينة من التعليقات السلبية:
+عينة سلبية:
 ${sampleNeg.map((t, i) => `${i + 1}. ${t}`).join('\n')}
 
-بناءً على هذه البيانات، أعطني تحليلاً شاملاً بصيغة JSON فقط بدون أي نص إضافي:
-{
-  "themes": [
-    { "name": "اسم الموضوع", "description": "وصف مختصر", "percentage": 25, "sentiment": "إيجابي أو سلبي أو محايد أو مختلط" }
-  ],
-  "issues": [
-    { "title": "عنوان القضية", "description": "تفصيل القضية", "severity": "high أو medium أو low", "count": 15 }
-  ],
-  "insights": [
-    { "title": "عنوان الرؤية", "description": "تفصيل الرؤية" }
-  ],
-  "recommendations": [
-    { "title": "عنوان التوصية", "description": "تفصيل التوصية", "priority": "high أو medium أو low" }
-  ],
-  "overall_summary": "ملخص عام للتقرير في 3-4 جمل",
-  "sentiment_analysis": "تحليل نصي مفصل لتوزيع المشاعر في 2-3 جمل"
-}
+أعطني تحليلاً بصيغة JSON:
+{"themes":[{"name":"...","description":"...","percentage":25,"sentiment":"..."}],"issues":[{"title":"...","description":"...","severity":"high","count":15}],"insights":[{"title":"...","description":"..."}],"recommendations":[{"title":"...","description":"...","priority":"high"}],"overall_summary":"...","sentiment_analysis":"..."}
 
-أعطني 3-5 مواضيع، 3-5 قضايا، 3-5 رؤى، 3-5 توصيات. كلها بالعربية.
+3-5 لكل قسم. بالعربية.
 أجب بصيغة JSON فقط. لا تكتب أي نص قبل أو بعد الـ JSON.`;
 
       const reportRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
@@ -386,6 +398,7 @@ ${sampleNeg.map((t, i) => `${i + 1}. ${t}`).join('\n')}
         headers: { 'Authorization': `Bearer ${keys.openrouter}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model: modelId,
+          max_tokens: 4096,
           messages: [{ role: 'user', content: reportPrompt }],
           response_format: { type: 'json_object' },
           temperature: 0.3,
@@ -419,8 +432,9 @@ ${sampleNeg.map((t, i) => `${i + 1}. ${t}`).join('\n')}
 
       setAnalysisState('done');
     } catch (err: any) {
-      setAnalysisError(err.message || 'حدث خطأ أثناء التحليل');
-      setAnalysisState('error');
+      // Phase 2 failed but Phase 1 data is already saved in activeTweets
+      setAnalysisError(err.message || 'حدث خطأ أثناء إعداد التقرير');
+      setAnalysisState('done'); // still show results — Phase 1 data is valid
     }
   };
 
