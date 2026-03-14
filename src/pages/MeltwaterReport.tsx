@@ -16,6 +16,8 @@ import {
   ChevronUp,
   Loader2,
   Play,
+  Clock,
+  Trash2,
 } from 'lucide-react';
 import PageExplainer from '@/components/PageExplainer';
 import { SentimentPieChart } from '@/components/SentimentPieChart';
@@ -28,6 +30,38 @@ import { WordCloud } from '@/components/meltwater/WordCloud';
 import { DataImport } from '@/components/meltwater/DataImport';
 import { Link } from 'react-router-dom';
 import { loadApiKeys, loadSelectedModel } from '@/lib/settings';
+import { supabase } from '@/integrations/supabase/client';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { formatDistanceToNow } from 'date-fns';
+import { ar } from 'date-fns/locale';
+
+/* ── Robust JSON parser ── */
+function safeParseJSON(raw: string): any {
+  let clean = raw.replace(/```json\s*/gi, '').replace(/```\s*/gi, '').replace(/^\s*\n/, '').trim();
+  const firstBrace = clean.indexOf('{');
+  const firstBracket = clean.indexOf('[');
+  const start = Math.min(
+    firstBrace >= 0 ? firstBrace : Infinity,
+    firstBracket >= 0 ? firstBracket : Infinity,
+  );
+  if (start !== Infinity) clean = clean.slice(start);
+  return JSON.parse(clean);
+}
+
+/* ── Saved report row type ── */
+interface SavedReport {
+  id: string;
+  title: string;
+  tweet_count: number;
+  positive_count: number;
+  negative_count: number;
+  neutral_count: number;
+  model_used: string;
+  report_insights: ReportInsights;
+  analyzed_tweets: Tweet[];
+  summary: string;
+  created_at: string;
+}
 
 /* ══════════════════════════════════════════════════════════════
    Sample Data
@@ -166,8 +200,35 @@ const MeltwaterReport = () => {
     return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, n).map(([k]) => k);
   };
 
-  // Helper: strip markdown fences from AI response
-  const stripJsonFences = (s: string): string => s.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+  const queryClient = useQueryClient();
+
+  // Fetch saved reports
+  const { data: savedReports } = useQuery({
+    queryKey: ['meltwater-reports'],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('meltwater_reports')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(20);
+      if (error) throw error;
+      return (data || []) as SavedReport[];
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Delete a saved report
+  const handleDeleteReport = async (id: string) => {
+    await (supabase as any).from('meltwater_reports').delete().eq('id', id);
+    queryClient.invalidateQueries({ queryKey: ['meltwater-reports'] });
+  };
+
+  // Load a saved report
+  const handleLoadReport = (report: SavedReport) => {
+    setActiveTweets(report.analyzed_tweets);
+    setReportInsights(report.report_insights);
+    setAnalysisState('done');
+  };
 
   // Import handler
   const handleImport = (tweets: any[]) => {
@@ -231,9 +292,8 @@ const MeltwaterReport = () => {
         if (!res.ok) throw new Error(`API error: ${res.status}`);
 
         const data = await res.json();
-        let content = data.choices?.[0]?.message?.content || '{}';
-        content = stripJsonFences(content);
-        const parsed = JSON.parse(content);
+        const content = data.choices?.[0]?.message?.content || '{}';
+        const parsed = safeParseJSON(content);
         const results = parsed.results || [];
 
         for (const r of results) {
@@ -318,10 +378,28 @@ ${sampleNeg.map((t, i) => `${i + 1}. ${t}`).join('\n')}
 
       if (!reportRes.ok) throw new Error(`Report API error: ${reportRes.status}`);
       const reportData = await reportRes.json();
-      let reportContent = reportData.choices?.[0]?.message?.content || '{}';
-      reportContent = stripJsonFences(reportContent);
-      const insights = JSON.parse(reportContent) as ReportInsights;
+      const reportContent = reportData.choices?.[0]?.message?.content || '{}';
+      const insights = safeParseJSON(reportContent) as ReportInsights;
       setReportInsights(insights);
+
+      // Auto-save report to Supabase
+      const posCount = analyzed.filter(t => t.sentiment === 'إيجابي').length;
+      const negCount = analyzed.filter(t => t.sentiment === 'سلبي').length;
+      const neuCount = analyzed.filter(t => t.sentiment === 'محايد').length;
+      try {
+        await (supabase as any).from('meltwater_reports').insert({
+          title: `تقرير ${new Date().toLocaleDateString('ar-SA')} — ${analyzed.length} تغريدة`,
+          tweet_count: analyzed.length,
+          positive_count: posCount,
+          negative_count: negCount,
+          neutral_count: neuCount,
+          model_used: modelId,
+          report_insights: insights,
+          analyzed_tweets: analyzed,
+          summary: insights.overall_summary || '',
+        });
+        queryClient.invalidateQueries({ queryKey: ['meltwater-reports'] });
+      } catch (_) { /* silent — report still displays even if save fails */ }
 
       setAnalysisState('done');
     } catch (err: any) {
@@ -378,6 +456,55 @@ ${sampleNeg.map((t, i) => `${i + 1}. ${t}`).join('\n')}
         description="عرض تفاعلي شامل يتضمن تحليل المشاعر والاتجاهات والرسوم البيانية من تقارير Meltwater"
         color="#8B5CF6"
       />
+
+      {/* ── Previous Reports ── */}
+      {savedReports && savedReports.length > 0 && (
+        <div className="card-stagger space-y-3" style={{ animationDelay: "0.03s" }}>
+          <div className="flex items-center gap-2">
+            <Clock className="w-4 h-4 text-muted-foreground/50" strokeWidth={1.8} />
+            <h3 className="text-[14px] font-display font-bold text-foreground/70">التقارير السابقة</h3>
+          </div>
+          <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none">
+            {savedReports.map((report) => {
+              const total = report.positive_count + report.negative_count + report.neutral_count;
+              const posPct = total ? Math.round((report.positive_count / total) * 100) : 0;
+              const negPct = total ? Math.round((report.negative_count / total) * 100) : 0;
+              const neuPct = total ? Math.round((report.neutral_count / total) * 100) : 0;
+              return (
+                <div
+                  key={report.id}
+                  onClick={() => handleLoadReport(report)}
+                  className="shrink-0 w-[260px] rounded-2xl bg-card border border-border/40 p-4 cursor-pointer hover:border-thmanyah-blue/40 hover:shadow-md transition-all group"
+                >
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <h4 className="text-[12px] font-bold text-foreground/80 leading-snug line-clamp-2">{report.title}</h4>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleDeleteReport(report.id); }}
+                      className="shrink-0 p-1 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-thmanyah-red/10 transition-all"
+                    >
+                      <Trash2 className="w-3.5 h-3.5 text-thmanyah-red" />
+                    </button>
+                  </div>
+                  <p className="text-[10px] font-bold text-muted-foreground/40 mb-2">
+                    {formatDistanceToNow(new Date(report.created_at), { addSuffix: true, locale: ar })}
+                    {' · '}
+                    <span className="nums-en">{report.tweet_count}</span> تغريدة
+                  </p>
+                  {/* Sentiment mini bar */}
+                  <div className="flex h-1.5 rounded-full overflow-hidden bg-muted/20 mb-2">
+                    <div className="bg-thmanyah-green" style={{ width: `${posPct}%` }} />
+                    <div className="bg-muted-foreground/30" style={{ width: `${neuPct}%` }} />
+                    <div className="bg-thmanyah-red" style={{ width: `${negPct}%` }} />
+                  </div>
+                  {report.summary && (
+                    <p className="text-[10px] font-bold text-muted-foreground/40 leading-relaxed line-clamp-2">{report.summary}</p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* ── Section Navigation ── */}
       <nav className="card-stagger sticky top-16 z-30 -mx-2 px-2 py-3 bg-background/80 backdrop-blur-xl border-b border-border/30" style={{ animationDelay: "0.05s" }}>
