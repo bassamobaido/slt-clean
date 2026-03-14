@@ -9,7 +9,6 @@ import {
   AlertTriangle,
   CheckCircle,
   MessageSquare,
-  Users,
   TrendingUp,
   FileText,
   ExternalLink,
@@ -74,6 +73,20 @@ const SAMPLE_TWEETS = [
 
 type Tweet = typeof SAMPLE_TWEETS[number];
 
+/* ── AI Report Insights ── */
+interface ReportTheme { name: string; description: string; percentage: number; sentiment: string }
+interface ReportIssue { title: string; description: string; severity: 'high' | 'medium' | 'low'; count: number }
+interface ReportInsight { title: string; description: string }
+interface ReportRecommendation { title: string; description: string; priority: 'high' | 'medium' | 'low' }
+interface ReportInsights {
+  themes: ReportTheme[];
+  issues: ReportIssue[];
+  insights: ReportInsight[];
+  recommendations: ReportRecommendation[];
+  overall_summary: string;
+  sentiment_analysis: string;
+}
+
 /* ── Section navigation items ── */
 const SECTIONS = [
   { id: "overview", label: "نظرة عامة", icon: BarChart3 },
@@ -83,7 +96,7 @@ const SECTIONS = [
   { id: "issues", label: "المشاكل", icon: AlertTriangle },
   { id: "insights", label: "الرؤى", icon: Lightbulb },
   { id: "recommendations", label: "التوصيات", icon: CheckCircle },
-  { id: "teams", label: "الفرق", icon: Users },
+  { id: "summary", label: "الملخص", icon: FileText },
   { id: "tweets", label: "التغريدات", icon: MessageSquare },
 ] as const;
 
@@ -99,9 +112,10 @@ const MeltwaterReport = () => {
   // Data state
   const [activeTweets, setActiveTweets] = useState<Tweet[]>(SAMPLE_TWEETS);
   const [importedTweets, setImportedTweets] = useState<Tweet[] | null>(null);
-  const [analysisState, setAnalysisState] = useState<'idle' | 'ready' | 'analyzing' | 'done' | 'error'>('idle');
+  const [analysisState, setAnalysisState] = useState<'idle' | 'ready' | 'analyzing' | 'generating-report' | 'done' | 'error'>('idle');
   const [analysisProgress, setAnalysisProgress] = useState(0);
   const [analysisError, setAnalysisError] = useState('');
+  const [reportInsights, setReportInsights] = useState<ReportInsights | null>(null);
 
   // Computed stats
   const totalTweets = activeTweets.length;
@@ -138,6 +152,22 @@ const MeltwaterReport = () => {
     if (!selectedSentiment) return [];
     return activeTweets.filter(t => t.sentiment === selectedSentiment);
   }, [selectedSentiment, activeTweets]);
+
+  // Helper: extract top keywords
+  const getTopKeywords = (tweets: Tweet[], n: number): string[] => {
+    const counts: Record<string, number> = {};
+    tweets.forEach(t => t.keywords.forEach(k => { counts[k] = (counts[k] || 0) + 1; }));
+    return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, n).map(([k]) => k);
+  };
+
+  const getTopEmotions = (tweets: Tweet[], n: number): string[] => {
+    const counts: Record<string, number> = {};
+    tweets.forEach(t => { counts[t.emotion] = (counts[t.emotion] || 0) + 1; });
+    return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, n).map(([k]) => k);
+  };
+
+  // Helper: strip markdown fences from AI response
+  const stripJsonFences = (s: string): string => s.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
 
   // Import handler
   const handleImport = (tweets: any[]) => {
@@ -201,7 +231,8 @@ const MeltwaterReport = () => {
         if (!res.ok) throw new Error(`API error: ${res.status}`);
 
         const data = await res.json();
-        const content = data.choices?.[0]?.message?.content || '{}';
+        let content = data.choices?.[0]?.message?.content || '{}';
+        content = stripJsonFences(content);
         const parsed = JSON.parse(content);
         const results = parsed.results || [];
 
@@ -221,6 +252,77 @@ const MeltwaterReport = () => {
       }
 
       setActiveTweets(analyzed);
+
+      // Phase 2: Generate report insights
+      setAnalysisState('generating-report');
+      setAnalysisProgress(100);
+
+      const sentimentSummary = {
+        positive: analyzed.filter(t => t.sentiment === 'إيجابي').length,
+        negative: analyzed.filter(t => t.sentiment === 'سلبي').length,
+        neutral: analyzed.filter(t => t.sentiment === 'محايد').length,
+      };
+      const kwList = getTopKeywords(analyzed, 20);
+      const emList = getTopEmotions(analyzed, 10);
+      const samplePos = analyzed.filter(t => t.sentiment === 'إيجابي').slice(0, 5).map(t => t.text);
+      const sampleNeg = analyzed.filter(t => t.sentiment === 'سلبي').slice(0, 5).map(t => t.text);
+
+      const reportPrompt = `أنت محلل بيانات متخصص في تحليل وسائل التواصل الاجتماعي لشركة ثمانية الإعلامية السعودية.
+
+حللت ${analyzed.length} تغريدة/منشور. هذا ملخص النتائج:
+
+التوزيع العاطفي:
+- إيجابي: ${sentimentSummary.positive} (${Math.round(100 * sentimentSummary.positive / analyzed.length)}%)
+- سلبي: ${sentimentSummary.negative} (${Math.round(100 * sentimentSummary.negative / analyzed.length)}%)
+- محايد: ${sentimentSummary.neutral} (${Math.round(100 * sentimentSummary.neutral / analyzed.length)}%)
+
+أكثر الكلمات تكراراً: ${kwList.join('، ')}
+أكثر المشاعر: ${emList.join('، ')}
+
+عينة من التعليقات الإيجابية:
+${samplePos.map((t, i) => `${i + 1}. ${t}`).join('\n')}
+
+عينة من التعليقات السلبية:
+${sampleNeg.map((t, i) => `${i + 1}. ${t}`).join('\n')}
+
+بناءً على هذه البيانات، أعطني تحليلاً شاملاً بصيغة JSON فقط بدون أي نص إضافي:
+{
+  "themes": [
+    { "name": "اسم الموضوع", "description": "وصف مختصر", "percentage": 25, "sentiment": "إيجابي أو سلبي أو محايد أو مختلط" }
+  ],
+  "issues": [
+    { "title": "عنوان القضية", "description": "تفصيل القضية", "severity": "high أو medium أو low", "count": 15 }
+  ],
+  "insights": [
+    { "title": "عنوان الرؤية", "description": "تفصيل الرؤية" }
+  ],
+  "recommendations": [
+    { "title": "عنوان التوصية", "description": "تفصيل التوصية", "priority": "high أو medium أو low" }
+  ],
+  "overall_summary": "ملخص عام للتقرير في 3-4 جمل",
+  "sentiment_analysis": "تحليل نصي مفصل لتوزيع المشاعر في 2-3 جمل"
+}
+
+أعطني 3-5 مواضيع، 3-5 قضايا، 3-5 رؤى، 3-5 توصيات. كلها بالعربية.`;
+
+      const reportRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${keys.openrouter}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: modelId,
+          messages: [{ role: 'user', content: reportPrompt }],
+          response_format: { type: 'json_object' },
+          temperature: 0.3,
+        }),
+      });
+
+      if (!reportRes.ok) throw new Error(`Report API error: ${reportRes.status}`);
+      const reportData = await reportRes.json();
+      let reportContent = reportData.choices?.[0]?.message?.content || '{}';
+      reportContent = stripJsonFences(reportContent);
+      const insights = JSON.parse(reportContent) as ReportInsights;
+      setReportInsights(insights);
+
       setAnalysisState('done');
     } catch (err: any) {
       setAnalysisError(err.message || 'حدث خطأ أثناء التحليل');
@@ -232,6 +334,7 @@ const MeltwaterReport = () => {
   const handleUseDirectly = () => {
     if (!importedTweets) return;
     setActiveTweets(importedTweets);
+    setReportInsights(null);
     setAnalysisState('done');
   };
 
@@ -342,6 +445,14 @@ const MeltwaterReport = () => {
               <p className="text-[14px] font-bold text-foreground/80">جاري التحليل...</p>
               <Progress value={analysisProgress} className="max-w-xs mx-auto h-2" />
               <p className="text-[11px] font-bold text-muted-foreground/40">{analysisProgress}%</p>
+            </>
+          )}
+
+          {analysisState === 'generating-report' && (
+            <>
+              <Loader2 className="w-8 h-8 text-thmanyah-blue animate-spin mx-auto" />
+              <p className="text-[14px] font-bold text-foreground/80">جاري إعداد التقرير الشامل...</p>
+              <p className="text-[11px] font-bold text-muted-foreground/40">تحليل الأنماط واستخلاص الرؤى والتوصيات</p>
             </>
           )}
 
@@ -513,26 +624,40 @@ const MeltwaterReport = () => {
             </div>
           </div>
 
-          {/* Themes */}
-          <div className="card-stagger rounded-2xl bg-card border border-border/40 p-6" style={{ animationDelay: "0.05s" }}>
-            <div className="flex items-center gap-2 mb-4">
-              <Lightbulb className="w-4 h-4 text-muted-foreground/50" strokeWidth={1.8} />
-              <h3 className="text-[14px] font-display font-bold text-foreground/80">المواضيع الرئيسية</h3>
+          {/* Themes (AI-generated) */}
+          {reportInsights && reportInsights.themes.length > 0 && (
+            <div className="card-stagger rounded-2xl bg-card border border-border/40 p-6" style={{ animationDelay: "0.05s" }}>
+              <div className="flex items-center gap-2 mb-4">
+                <Lightbulb className="w-4 h-4 text-muted-foreground/50" strokeWidth={1.8} />
+                <h3 className="text-[14px] font-display font-bold text-foreground/80">المواضيع الرئيسية</h3>
+              </div>
+              <div className="space-y-3">
+                {reportInsights.themes.map((theme, i) => {
+                  const colors = ["#0072F9", "#00C17A", "#FFBC0A", "#F24935", "#8B5CF6"];
+                  const color = colors[i % colors.length];
+                  return (
+                    <div key={i} className="p-3 rounded-xl border" style={{ borderColor: `${color}15`, backgroundColor: `${color}04` }}>
+                      <div className="flex items-center justify-between mb-1">
+                        <h4 className="text-[13px] font-bold text-foreground/80">{theme.name}</h4>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-bold text-muted-foreground/40">{theme.percentage}%</span>
+                          <Badge className={`text-[9px] font-bold border-0 ${
+                            theme.sentiment === 'إيجابي' ? 'bg-thmanyah-green/10 text-thmanyah-green' :
+                            theme.sentiment === 'سلبي' ? 'bg-thmanyah-red/10 text-thmanyah-red' :
+                            'bg-muted text-muted-foreground'
+                          }`}>{theme.sentiment}</Badge>
+                        </div>
+                      </div>
+                      <p className="text-[11px] font-bold text-muted-foreground/50 leading-relaxed">{theme.description}</p>
+                      <div className="mt-2 h-1.5 bg-muted/20 rounded-full overflow-hidden">
+                        <div className="h-full rounded-full" style={{ width: `${theme.percentage}%`, backgroundColor: color }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-            <div className="space-y-3">
-              {[
-                { title: "البث الرياضي والنقل", desc: "نقاشات حول جودة البث ومشاكل تقنية في نقل المباريات", color: "#0072F9" },
-                { title: "أداء اللاعبين", desc: "إشادة بأداء رونالدو وجواو فيليكس مع تغطية لأهداف مميزة", color: "#00C17A" },
-                { title: "المحتوى التعليمي", desc: "تفاعل إيجابي مع المحتوى التوثيقي خاصة حلقات الشرح التاريخي", color: "#FFBC0A" },
-                { title: "انتقادات التحيز", desc: "اتهامات بالتحيز لأندية معينة وإخفاء شعبية أندية أخرى", color: "#F24935" },
-              ].map((theme) => (
-                <div key={theme.title} className="p-3 rounded-xl border" style={{ borderColor: `${theme.color}15`, backgroundColor: `${theme.color}04` }}>
-                  <h4 className="text-[13px] font-bold text-foreground/80 mb-1">{theme.title}</h4>
-                  <p className="text-[11px] font-bold text-muted-foreground/50 leading-relaxed">{theme.desc}</p>
-                </div>
-              ))}
-            </div>
-          </div>
+          )}
         </div>
 
         {/* Topic Categorization */}
@@ -555,408 +680,131 @@ const MeltwaterReport = () => {
       </section>
 
       {/* ══════════════════════════════════════════
-          SECTION: Issues
+          SECTION: Issues (AI-generated)
           ══════════════════════════════════════════ */}
-      <section id="issues" className="scroll-mt-32 space-y-5">
-        <SectionHeading icon={AlertTriangle} color="#F24935">المشاكل والشكاوى الرئيسية</SectionHeading>
+      {reportInsights && reportInsights.issues.length > 0 && (
+        <section id="issues" className="scroll-mt-32 space-y-5">
+          <SectionHeading icon={AlertTriangle} color="#F24935">المشاكل والقضايا</SectionHeading>
 
-        <div className="space-y-4">
-          {[
-            {
-              num: 1, title: "مشاكل تقنية في البث والنقل",
-              desc: "تتكرر الشكاوى من مشاكل بدائية في البث المباشر، خاصة في المباريات الكبرى. المستخدمون يطالبون بالتعلم من قنوات أخرى مثل beIN للوصول للاحترافية المطلوبة.",
-              severity: "عالي الخطورة", severityColor: "#F24935", note: "يؤثر على السمعة المهنية",
-              quotes: [
-                { text: "والله لو تكلمونهم beIN وتقولون لهم نبي دورات عندكم... وصلنا للدور الثاني من الدوري وانتم للحين اعذار ونقل سيء وتقطيع", author: "@hamad_almohisn", reach: "1.42K" },
-                { text: "محمد الخميس ينتقد الناقل الرسمي للدوري 'ثمانية' امس حتى مباراة الاهلي فيها مشاكل بدائية في البث", author: "@1432nayif", reach: "244 (5 إعادات تغريد)" },
-              ],
-            },
-            {
-              num: 2, title: "اتهامات بالتحيز لأندية معينة",
-              desc: "هناك اتهامات متكررة بأن القناة تتحيز للهلال على حساب أندية أخرى، خاصة النصر. يتم ربط هذا بشخص \"أبو مالح\" الذي يُتهم بالتوجه الهلالي.",
-              severity: "عالي الخطورة", severityColor: "#F24935", note: "يهدد المصداقية والحيادية",
-              quotes: [
-                { text: "اما ثمانية ابومالح فتوجهها بات معلوم للجميع للاسف استغلال الحالة النصراوية للضغط وتشتيت الفريق منهج واضح", author: "@Turki_alharbi44", reach: "341" },
-                { text: "كالعادة تعمد إخفاء شعبية النصر من قبل الهلالي ابومالح وقناته #ثمانية", author: "@Alqeeran", reach: "41" },
-              ],
-            },
-            {
-              num: 3, title: "إخفاء وعدم عرض لقطات مهمة",
-              desc: "انتقادات حادة لعدم عرض لقطات مهمة أو إعادات للأحداث المثيرة، مما يُفقد المشاهد تجربة متكاملة.",
-              severity: "متوسط الخطورة", severityColor: "#FFBC0A", note: "يؤثر على جودة التغطية",
-              quotes: [
-                { text: "كالعادة .. قناة ثمانية مع لقطة جواو فيلكس .. شاهد ماشفش حاجة !!", author: "@Aljamaz8910", reach: "799 (11 إعادة تغريد)" },
-                { text: "معقولة قناة ثمانية بعدتها و عتادها و كاميراتها و شغلها و تقنياتها اللي نسمع فيها وللحين ما شفناها", author: "@MaanAlquiae", reach: "220" },
-              ],
-            },
-            {
-              num: 4, title: "الجدل حول التحكيم وتقنية VAR",
-              desc: "نقاشات حادة حول تباين قرارات VAR وتكلفة الحكام الأجانب مقارنة بالدوريات الأخرى.",
-              severity: "خارج السيطرة", severityColor: "#FFBC0A", note: "مسؤولية اتحاد الكرة",
-              quotes: [
-                { text: "تكلفة جلب حكم اجنبي في الدوري السعودي 450 الف ريال للمباراه الواحده بينما تكلفته في الدوري الاماراتي والقطري لايتجاوز 170 الف", author: "@nzihhh2025", reach: "4.92K" },
-              ],
-            },
-            {
-              num: 5, title: "انتقادات المعلقين والمحتوى",
-              desc: "تعليقات ساخرة ومنتقدة لأسلوب بعض المعلقين، مع استياء عام من بعض جوانب التغطية.",
-              severity: "متوسط الخطورة", severityColor: "#FFBC0A", note: "يؤثر على الرضا العام",
-              quotes: [
-                { text: "اكيد قناة ثمانية متعاقدين مع فارس عوض عشان يغني راب", author: "@kfa7i", reach: "27.42K (أعلى وصول)" },
-              ],
-            },
-          ].map((issue, i) => (
-            <div
-              key={issue.num}
-              className="card-stagger rounded-2xl bg-card border border-border/40 p-5 space-y-4"
-              style={{ animationDelay: `${i * 0.05}s` }}
-            >
-              <div className="flex items-start gap-3">
-                <div className="shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-white text-[11px] font-bold" style={{ backgroundColor: issue.severityColor }}>
-                  {issue.num}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h4 className="text-[14px] font-bold text-foreground/85 mb-1">{issue.title}</h4>
-                  <p className="text-[12px] font-bold text-muted-foreground/50 leading-relaxed">{issue.desc}</p>
-                </div>
-              </div>
-
-              {/* Quotes */}
-              <div className="space-y-2 mr-10">
-                {issue.quotes.map((q, qi) => (
-                  <div key={qi} className="p-3 rounded-xl bg-muted/30 border border-border/20">
-                    <p className="text-[12px] italic text-muted-foreground/60 leading-relaxed">&ldquo;{q.text}&rdquo;</p>
-                    <div className="flex items-center gap-1.5 mt-2 text-[10px] font-bold" style={{ color: issue.severityColor }}>
-                      <ExternalLink className="w-3 h-3" />
-                      {q.author} — الوصول: {q.reach}
+          <div className="space-y-4">
+            {reportInsights.issues.map((issue, i) => {
+              const severityColor = issue.severity === 'high' ? '#F24935' : issue.severity === 'medium' ? '#FFBC0A' : '#6B7280';
+              const severityLabel = issue.severity === 'high' ? 'عالي الخطورة' : issue.severity === 'medium' ? 'متوسط الخطورة' : 'منخفض الخطورة';
+              return (
+                <div
+                  key={i}
+                  className="card-stagger rounded-2xl bg-card border border-border/40 p-5 space-y-3"
+                  style={{ animationDelay: `${i * 0.05}s` }}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-white text-[11px] font-bold" style={{ backgroundColor: severityColor }}>
+                      {i + 1}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h4 className="text-[14px] font-bold text-foreground/85 mb-1">{issue.title}</h4>
+                      <p className="text-[12px] font-bold text-muted-foreground/50 leading-relaxed">{issue.description}</p>
                     </div>
                   </div>
-                ))}
-              </div>
-
-              <div className="flex items-center gap-2 mr-10">
-                <span className="px-2.5 py-1 rounded-full text-[10px] font-bold text-white" style={{ backgroundColor: issue.severityColor }}>{issue.severity}</span>
-                <span className="text-[10px] font-bold text-muted-foreground/40">{issue.note}</span>
-              </div>
-            </div>
-          ))}
-
-          {/* Summary strip */}
-          <div className="card-stagger rounded-2xl bg-muted/30 border border-border/30 p-5" style={{ animationDelay: "0.3s" }}>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
-              <MiniStat value={String(sentimentCounts.negative)} label="تغريدة سلبية" color="#F24935" />
-              <MiniStat value={`${sentimentPercentages.negative}%`} label="من إجمالي التغريدات" color="#F24935" />
-              <MiniStat value="5" label="مشاكل رئيسية" color="#F24935" />
-              <MiniStat value="3" label="عالية الخطورة" color="#F24935" />
-            </div>
+                  <div className="flex items-center gap-2 mr-10">
+                    <span className="px-2.5 py-1 rounded-full text-[10px] font-bold text-white" style={{ backgroundColor: severityColor }}>{severityLabel}</span>
+                    {issue.count > 0 && (
+                      <span className="text-[10px] font-bold text-muted-foreground/40">{issue.count} تغريدة</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       {/* ══════════════════════════════════════════
-          SECTION: Insights
+          SECTION: Insights (AI-generated)
           ══════════════════════════════════════════ */}
-      <section id="insights" className="scroll-mt-32 space-y-5">
-        <SectionHeading icon={Lightbulb} color="#0072F9">الرؤى والملاحظات</SectionHeading>
+      {reportInsights && reportInsights.insights.length > 0 && (
+        <section id="insights" className="scroll-mt-32 space-y-5">
+          <SectionHeading icon={Lightbulb} color="#0072F9">الرؤى والملاحظات</SectionHeading>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {[
-            {
-              title: "محتوى رونالدو يحقق أعلى وصول",
-              desc: "التغريدات التي تتضمن رونالدو تحقق وصولاً يفوق 12K",
-              quote: "في كل مكان ، كريستيانو رونالدو حاضر 🔝🐐",
-              author: "@thmanyahsports", reach: "12.76K",
-            },
-            {
-              title: "المحتوى التعليمي يلقى تفاعلاً عالياً",
-              desc: "حلقات الشرح التاريخي تحظى بتقدير كبير، مع وصول يتجاوز 75K",
-              quote: "ماشاء الله شرح تفصيلي ومشوق ما تمنيت الفيديو يخلص ...عمل جبار",
-              author: "@reich_hadhrmi", reach: null,
-            },
-            {
-              title: "المعلقون يثيرون نقاشات واسعة",
-              desc: "تغريدات عن فارس عوض تحقق وصولاً عالياً (27K+)",
-              quote: "اكيد قناة ثمانية متعاقدين مع فارس عوض عشان يغني راب",
-              author: "@kfa7i", reach: "27.42K",
-            },
-            {
-              title: "طلب متزايد على IPTV يشمل ثمانية",
-              desc: "طلب واضح على اشتراكات IPTV تشمل قنوات ثمانية",
-              quote: "أبي اشتراك IPTV كفو وبدون أي تقطيع يكون شامل قنوات ثمانية",
-              author: "@MhmdAlshmr79531", reach: null,
-            },
-          ].map((insight, i) => (
-            <div
-              key={i}
-              className="card-stagger card-hover-lift rounded-2xl bg-card border border-border/40 p-5 space-y-3"
-              style={{ animationDelay: `${i * 0.05}s` }}
-            >
-              <div className="flex items-start gap-3">
-                <div className="shrink-0 p-2 rounded-xl bg-thmanyah-blue/[0.06]">
-                  <Lightbulb className="w-4 h-4 text-thmanyah-blue" strokeWidth={1.8} />
-                </div>
-                <div>
-                  <h4 className="text-[13px] font-bold text-foreground/85 mb-1">{insight.title}</h4>
-                  <p className="text-[11px] font-bold text-muted-foreground/50 leading-relaxed">{insight.desc}</p>
-                </div>
-              </div>
-              <div className="p-3 rounded-xl bg-thmanyah-blue/[0.03] border border-thmanyah-blue/10">
-                <p className="text-[12px] italic text-thmanyah-blue/70 leading-relaxed">&ldquo;{insight.quote}&rdquo;</p>
-                <div className="flex items-center gap-1.5 mt-2 text-[10px] font-bold text-thmanyah-blue/50">
-                  <ExternalLink className="w-3 h-3" />
-                  {insight.author}{insight.reach && ` — الوصول: ${insight.reach}`}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* ══════════════════════════════════════════
-          SECTION: Recommendations
-          ══════════════════════════════════════════ */}
-      <section id="recommendations" className="scroll-mt-32 space-y-5">
-        <SectionHeading icon={CheckCircle} color="#00C17A">التوصيات</SectionHeading>
-
-        <div className="space-y-4">
-          {[
-            { title: "تحسين البنية التقنية للبث", priority: "عالية", quote: "وصلنا للدور الثاني من الدوري وانتم للحين اعذار ونقل سيء وتقطيع", author: "@hamad_almohisn" },
-            { title: "تعزيز الحيادية في التغطية", priority: "عالية", quote: "ثمانية ابومالح فتوجهها بات معلوم للجميع للاسف", author: "@Turki_alharbi44" },
-            { title: "عرض جميع اللقطات المهمة", priority: "متوسطة", quote: "معقولة قناة ثمانية بعدتها وكاميراتها وللحين ما شفناها ما لقطوا", author: "@MaanAlquiae" },
-            { title: "توسيع المحتوى التعليمي والتوثيقي", priority: "متوسطة", quote: "الإنتاج جودتة رووووعة نفتخر بك 🇸🇦", author: "@k35g25" },
-            { title: "التركيز على محتوى النجوم العالميين", priority: "متوسطة", quote: "960 هدف ⚽️ رقم جديد للأسطورة كريستيانو رونالدو 🐐", author: "@thmanyahsports" },
-          ].map((rec, i) => (
-            <div
-              key={i}
-              className="card-stagger rounded-2xl bg-card border border-border/40 p-5"
-              style={{ animationDelay: `${i * 0.05}s` }}
-            >
-              <div className="flex items-start gap-3">
-                <div className="shrink-0 p-2 rounded-xl bg-thmanyah-green/[0.06]">
-                  <CheckCircle className="w-4 h-4 text-thmanyah-green" strokeWidth={1.8} />
-                </div>
-                <div className="flex-1 min-w-0 space-y-3">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {reportInsights.insights.map((insight, i) => (
+              <div
+                key={i}
+                className="card-stagger card-hover-lift rounded-2xl bg-card border border-border/40 p-5 space-y-3"
+                style={{ animationDelay: `${i * 0.05}s` }}
+              >
+                <div className="flex items-start gap-3">
+                  <div className="shrink-0 p-2 rounded-xl bg-thmanyah-blue/[0.06]">
+                    <Lightbulb className="w-4 h-4 text-thmanyah-blue" strokeWidth={1.8} />
+                  </div>
                   <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <h4 className="text-[13px] font-bold text-foreground/85">{rec.title}</h4>
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                        rec.priority === "عالية" ? "bg-thmanyah-red/10 text-thmanyah-red" : "bg-thmanyah-amber/10 text-thmanyah-amber"
-                      }`}>
-                        الأولوية: {rec.priority}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="p-3 rounded-xl bg-thmanyah-green/[0.03] border border-thmanyah-green/10">
-                    <p className="text-[10px] font-bold text-thmanyah-green/60 mb-1">مستند إلى:</p>
-                    <p className="text-[12px] italic text-thmanyah-green/70 leading-relaxed">&ldquo;{rec.quote}&rdquo;</p>
-                    <div className="flex items-center gap-1.5 mt-1.5 text-[10px] font-bold text-thmanyah-green/50">
-                      <ExternalLink className="w-3 h-3" /> {rec.author}
-                    </div>
+                    <h4 className="text-[13px] font-bold text-foreground/85 mb-1">{insight.title}</h4>
+                    <p className="text-[11px] font-bold text-muted-foreground/50 leading-relaxed">{insight.description}</p>
                   </div>
                 </div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Priority Matrix */}
-        <div className="card-stagger rounded-2xl bg-muted/30 border border-border/30 p-5" style={{ animationDelay: "0.3s" }}>
-          <h4 className="text-[13px] font-display font-bold text-foreground/70 mb-4">مصفوفة الأولويات</h4>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            {[
-              { label: "أولوية عالية", items: ["إصلاح مشاكل البث", "معالجة اتهامات التحيز"], color: "#F24935" },
-              { label: "أولوية متوسطة", items: ["تحسين عرض اللقطات", "توسيع المحتوى التعليمي"], color: "#FFBC0A" },
-              { label: "تطوير مستمر", items: ["محتوى النجوم العالميين", "تغطية دوري يلو"], color: "#0072F9" },
-              { label: "نقاط قوة", items: ["جودة الإنتاج التوثيقي", "تغطية رونالدو"], color: "#00C17A" },
-            ].map((p) => (
-              <div key={p.label} className="p-3 rounded-xl bg-card border" style={{ borderColor: `${p.color}15` }}>
-                <p className="text-[11px] font-bold mb-2" style={{ color: p.color }}>{p.label}</p>
-                <ul className="text-[10px] font-bold text-muted-foreground/50 space-y-1">
-                  {p.items.map((item) => <li key={item}>{item}</li>)}
-                </ul>
               </div>
             ))}
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       {/* ══════════════════════════════════════════
-          SECTION: Teams
+          SECTION: Recommendations (AI-generated)
           ══════════════════════════════════════════ */}
-      <section id="teams" className="scroll-mt-32 space-y-5">
-        <SectionHeading icon={Users} color="#8B5CF6">ماذا يعني هذا لفرق ثمانية؟</SectionHeading>
+      {reportInsights && reportInsights.recommendations.length > 0 && (
+        <section id="recommendations" className="scroll-mt-32 space-y-5">
+          <SectionHeading icon={CheckCircle} color="#00C17A">التوصيات</SectionHeading>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-          {/* Marketing */}
-          <TeamCard
-            icon={TrendingUp}
-            title="فريق التسويق"
-            subtitle="النمو وبناء السمعة"
-            color="#E4405F"
-            sections={[
-              {
-                heading: "فرص النمو المستخلصة",
-                type: "opportunity",
-                items: [
-                  "محتوى رونالدو = وصول عالي: التغريدات المتعلقة برونالدو تحقق وصول 12K+",
-                  "المحتوى التوثيقي محبوب: حلقة اليمن حققت تفاعلاً إيجابياً كبيراً",
-                  "طلب IPTV: الناس تبحث عن قنوات ثمانية ضمن باقات IPTV",
-                ],
-              },
-              {
-                heading: "تحديات السمعة",
-                type: "warning",
-                items: [
-                  "اتهامات التحيز: حملة علاقات عامة توضح الحيادية التحريرية",
-                  "ربط \"أبو مالح\" بالتحيز: فصل الشخصية عن العلامة التجارية",
-                ],
-              },
-              {
-                heading: "خطوات فورية",
-                type: "action",
-                items: [
-                  "إعداد حملة \"ثمانية للجميع\" تبرز تغطية متوازنة",
-                  "زيادة محتوى رونالدو 30% في الأسبوعين القادمين",
-                  "التواصل مع موزعي IPTV لشراكات رسمية",
-                ],
-              },
-            ]}
-          />
-
-          {/* Tech */}
-          <TeamCard
-            icon={BarChart3}
-            title="الفريق التقني"
-            subtitle="تحسين تجربة المستخدم والبث"
-            color="#0072F9"
-            sections={[
-              {
-                heading: "مشاكل حرجة",
-                type: "warning",
-                items: [
-                  "تقطيع البث: شكاوى متكررة خاصة في المباريات الكبرى. راجعوا CDN",
-                  "مشاكل بدائية: المستخدمون يصفون المشاكل بـ\"بدائية\" — تدقيق شامل للبث",
-                  "جودة 4K: الناس تطلب IPTV بجودة 4K — تأكدوا من دعم التطبيق",
-                ],
-              },
-              {
-                heading: "تحسينات UX",
-                type: "opportunity",
-                items: [
-                  "إعادة اللقطات: نظام سهل لمشاهدة الإعادات واللقطات المهمة",
-                  "مكتبة المباريات: سهولة الوصول لأرشيف المباريات",
-                ],
-              },
-              {
-                heading: "خطوات فورية",
-                type: "action",
-                items: [
-                  "تدقيق أداء البث قبل مباراة الهلال القادمة",
-                  "اختبار ضغط للخوادم في أوقات الذروة",
-                  "إضافة زر \"مشاهدة اللقطة\" سهل الوصول",
-                ],
-              },
-            ]}
-          />
-
-          {/* Sales */}
-          <TeamCard
-            icon={Target}
-            title="فريق المبيعات"
-            subtitle="الاشتراكات والشراكات"
-            color="#FFBC0A"
-            sections={[
-              {
-                heading: "رؤى للمبيعات",
-                type: "opportunity",
-                items: [
-                  "سعر الاشتراك 700 ريال: هناك من يستغرب السعر مع وجود مشاكل تقنية",
-                  "المنافسة مع beIN: أبرزوا ما يميز ثمانية (محتوى عربي، توثيقي، محلي)",
-                  "طلب IPTV غير رسمي: فرصة لحزم B2B مع الموزعين",
-                ],
-              },
-              {
-                heading: "خطوات فورية",
-                type: "action",
-                items: [
-                  "تطوير حزمة \"جرّب شهر مجاني\" لكسب المشككين",
-                  "إعداد عرض تقديمي لموزعي IPTV",
-                  "التركيز على المحتوى التوثيقي كميزة تنافسية",
-                ],
-              },
-            ]}
-          />
-
-          {/* Content */}
-          <TeamCard
-            icon={FileText}
-            title="فريق المحتوى"
-            subtitle="الإنتاج والتغطية التحريرية"
-            color="#00C17A"
-            sections={[
-              {
-                heading: "ما يحبه الجمهور (استمروا)",
-                type: "opportunity",
-                items: [
-                  "المحتوى التوثيقي: \"عمل جبار\"، \"سرد تاريخي متسلسل\" — هذا النوع محبوب جداً",
-                  "تغطية النجوم: رونالدو، جواو فيليكس — أعلى وصول",
-                  "جودة الإنتاج: \"الإنتاج جودته رووووعة\" — حافظوا على هذا المستوى",
-                ],
-              },
-              {
-                heading: "انتقادات تحتاج معالجة",
-                type: "warning",
-                items: [
-                  "عدم عرض اللقطات: بروتوكول واضح لعرض كل اللقطات المهمة",
-                  "تغطية غير متوازنة: أعطوا تغطية متساوية لكل الأندية",
-                  "تعليق فارس عوض: يثير جدلاً — وازنوا بمعلقين آخرين",
-                ],
-              },
-              {
-                heading: "خطوات فورية",
-                type: "action",
-                items: [
-                  "قائمة تدقيق لكل مباراة تضمن عرض جميع اللقطات المهمة",
-                  "جدولة حلقة توثيقية جديدة كل أسبوعين",
-                  "تنويع المعلقين على المباريات الكبرى",
-                ],
-              },
-            ]}
-          />
-        </div>
-
-        {/* Summary Table */}
-        <div className="card-stagger rounded-2xl bg-card border border-border/40 overflow-hidden" style={{ animationDelay: "0.2s" }}>
-          <div className="px-5 py-4 border-b border-border/30">
-            <h4 className="text-[13px] font-display font-bold text-foreground/80">ملخص الإجراءات لجميع الفرق</h4>
+          <div className="space-y-4">
+            {reportInsights.recommendations.map((rec, i) => (
+              <div
+                key={i}
+                className="card-stagger rounded-2xl bg-card border border-border/40 p-5"
+                style={{ animationDelay: `${i * 0.05}s` }}
+              >
+                <div className="flex items-start gap-3">
+                  <div className="shrink-0 p-2 rounded-xl bg-thmanyah-green/[0.06]">
+                    <CheckCircle className="w-4 h-4 text-thmanyah-green" strokeWidth={1.8} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <h4 className="text-[13px] font-bold text-foreground/85">{rec.title}</h4>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                        rec.priority === 'high' ? 'bg-thmanyah-red/10 text-thmanyah-red' :
+                        rec.priority === 'medium' ? 'bg-thmanyah-amber/10 text-thmanyah-amber' :
+                        'bg-muted text-muted-foreground'
+                      }`}>
+                        الأولوية: {rec.priority === 'high' ? 'عالية' : rec.priority === 'medium' ? 'متوسطة' : 'منخفضة'}
+                      </span>
+                    </div>
+                    <p className="text-[11px] font-bold text-muted-foreground/50 leading-relaxed">{rec.description}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-[12px]">
-              <thead>
-                <tr className="bg-muted/30">
-                  <th className="p-3.5 text-right font-bold text-foreground/70 border-b border-border/20">الفريق</th>
-                  <th className="p-3.5 text-right font-bold text-foreground/70 border-b border-border/20">الأولوية القصوى</th>
-                  <th className="p-3.5 text-right font-bold text-foreground/70 border-b border-border/20">الموعد النهائي</th>
-                </tr>
-              </thead>
-              <tbody>
-                {[
-                  { team: "التسويق", priority: "حملة \"ثمانية للجميع\" + زيادة محتوى رونالدو", deadline: "أسبوعين" },
-                  { team: "التقني", priority: "إصلاح تقطيع البث + اختبار ضغط", deadline: "قبل المباراة القادمة" },
-                  { team: "المبيعات", priority: "عرض \"شهر مجاني\" + التواصل مع موزعي IPTV", deadline: "شهر" },
-                  { team: "المحتوى", priority: "قائمة تدقيق اللقطات + تنويع المعلقين", deadline: "فوري" },
-                ].map((row, i) => (
-                  <tr key={i} className={`${i % 2 ? "bg-muted/10" : ""} hover:bg-muted/20 transition-colors`}>
-                    <td className="p-3.5 font-bold text-foreground/80 border-b border-border/10">{row.team}</td>
-                    <td className="p-3.5 text-muted-foreground/60 border-b border-border/10">{row.priority}</td>
-                    <td className="p-3.5 font-bold text-muted-foreground/50 border-b border-border/10">{row.deadline}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        </section>
+      )}
+
+      {/* ══════════════════════════════════════════
+          SECTION: Summary (AI-generated)
+          ══════════════════════════════════════════ */}
+      {reportInsights && (
+        <section id="summary" className="scroll-mt-32 space-y-5">
+          <SectionHeading icon={FileText} color="#8B5CF6">الملخص العام</SectionHeading>
+
+          <div className="card-stagger rounded-2xl bg-card border border-border/40 p-6 space-y-4" style={{ animationDelay: "0s" }}>
+            <div>
+              <h4 className="text-[13px] font-display font-bold text-foreground/70 mb-2">ملخص التقرير</h4>
+              <p className="text-[13px] font-bold text-foreground/80 leading-relaxed">{reportInsights.overall_summary}</p>
+            </div>
+            <div className="h-px bg-border/40" />
+            <div>
+              <h4 className="text-[13px] font-display font-bold text-foreground/70 mb-2">تحليل المشاعر</h4>
+              <p className="text-[13px] font-bold text-foreground/80 leading-relaxed">{reportInsights.sentiment_analysis}</p>
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       {/* ══════════════════════════════════════════
           SECTION: All Tweets
@@ -1049,63 +897,3 @@ function MiniStat({ value, label, color }: { value: string; label: string; color
   );
 }
 
-interface TeamSection {
-  heading: string;
-  type: "opportunity" | "warning" | "action";
-  items: string[];
-}
-
-function TeamCard({
-  icon: Icon,
-  title,
-  subtitle,
-  color,
-  sections,
-}: {
-  icon: React.ElementType;
-  title: string;
-  subtitle: string;
-  color: string;
-  sections: TeamSection[];
-}) {
-  const typeStyles = {
-    opportunity: { bg: "bg-thmanyah-blue/[0.03]", border: "border-thmanyah-blue/10", dot: "bg-thmanyah-blue" },
-    warning: { bg: "bg-thmanyah-red/[0.03]", border: "border-thmanyah-red/10", dot: "bg-thmanyah-red" },
-    action: { bg: "bg-thmanyah-green/[0.03]", border: "border-thmanyah-green/10", dot: "bg-thmanyah-green" },
-  };
-
-  return (
-    <div className="card-stagger rounded-2xl bg-card border border-border/40 overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center gap-3 px-5 py-4 border-b border-border/20">
-        <div className="p-2 rounded-xl" style={{ backgroundColor: `${color}10`, color }}>
-          <Icon className="w-5 h-5" strokeWidth={1.8} />
-        </div>
-        <div>
-          <h4 className="text-[14px] font-bold text-foreground/85">{title}</h4>
-          <p className="text-[10px] font-bold" style={{ color: `${color}80` }}>{subtitle}</p>
-        </div>
-      </div>
-
-      {/* Sections */}
-      <div className="p-5 space-y-4">
-        {sections.map((sec) => {
-          const style = typeStyles[sec.type];
-          return (
-            <div key={sec.heading} className={`p-3.5 rounded-xl ${style.bg} border ${style.border}`}>
-              <h5 className="text-[12px] font-bold text-foreground/70 mb-2.5">{sec.heading}</h5>
-              <ul className="space-y-2">
-                {sec.items.map((item, i) => (
-                  <li key={i} className="flex items-start gap-2 text-[11px] font-bold text-muted-foreground/60 leading-relaxed">
-                    <div className={`w-1.5 h-1.5 rounded-full ${style.dot} mt-1.5 shrink-0`} />
-                    {item}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
