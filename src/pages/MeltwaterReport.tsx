@@ -37,15 +37,29 @@ import { ar } from 'date-fns/locale';
 
 /* ── Robust JSON parser ── */
 function safeParseJSON(raw: string): any {
-  let clean = raw.replace(/```json\s*/gi, '').replace(/```\s*/gi, '').replace(/^\s*\n/, '').trim();
+  if (!raw || typeof raw !== 'string') throw new Error('Empty response');
+
+  // Try direct parse first
+  try { return JSON.parse(raw); } catch {}
+
+  // Remove markdown fences
+  let clean = raw.replace(/```json\s*/gi, '').replace(/```\s*/gi, '').trim();
+  try { return JSON.parse(clean); } catch {}
+
+  // Find first { or [ and last } or ]
   const firstBrace = clean.indexOf('{');
+  const lastBrace = clean.lastIndexOf('}');
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    try { return JSON.parse(clean.slice(firstBrace, lastBrace + 1)); } catch {}
+  }
+
   const firstBracket = clean.indexOf('[');
-  const start = Math.min(
-    firstBrace >= 0 ? firstBrace : Infinity,
-    firstBracket >= 0 ? firstBracket : Infinity,
-  );
-  if (start !== Infinity) clean = clean.slice(start);
-  return JSON.parse(clean);
+  const lastBracket = clean.lastIndexOf(']');
+  if (firstBracket >= 0 && lastBracket > firstBracket) {
+    try { return JSON.parse(clean.slice(firstBracket, lastBracket + 1)); } catch {}
+  }
+
+  throw new Error('Could not parse AI response as JSON');
 }
 
 /* ── Saved report row type ── */
@@ -280,7 +294,8 @@ const MeltwaterReport = () => {
 - sentiment: إيجابي أو سلبي أو محايد
 - emotion: العاطفة (إعجاب، غضب، إحباط، حماس، فخر، استياء، إثارة، تساؤل، فضول، سخرية، انتقاد، تقدير، تشاؤم، صدمة، طلب، تحفظ، تحليل، محايد)
 - keywords: أهم 2-4 كلمات مفتاحية
-أرجع JSON بالشكل: {"results":[{"index":1,"sentiment":"...","emotion":"...","keywords":["..."]},...]}`,
+أرجع JSON بالشكل: {"results":[{"index":1,"sentiment":"...","emotion":"...","keywords":["..."]},...]}
+أجب بصيغة JSON فقط. لا تكتب أي نص قبل أو بعد الـ JSON.`,
               },
               { role: 'user', content: tweetsText },
             ],
@@ -363,7 +378,8 @@ ${sampleNeg.map((t, i) => `${i + 1}. ${t}`).join('\n')}
   "sentiment_analysis": "تحليل نصي مفصل لتوزيع المشاعر في 2-3 جمل"
 }
 
-أعطني 3-5 مواضيع، 3-5 قضايا، 3-5 رؤى، 3-5 توصيات. كلها بالعربية.`;
+أعطني 3-5 مواضيع، 3-5 قضايا، 3-5 رؤى، 3-5 توصيات. كلها بالعربية.
+أجب بصيغة JSON فقط. لا تكتب أي نص قبل أو بعد الـ JSON.`;
 
       const reportRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
