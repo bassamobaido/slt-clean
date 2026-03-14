@@ -267,8 +267,8 @@ const MeltwaterReport = () => {
     setAnalysisProgress(0);
     setAnalysisError('');
 
-    const BATCH_SIZE = 5;
-    const PARALLEL = 3;
+    const BATCH_SIZE = 8;
+    const PARALLEL = 5;
     const analyzed = [...importedTweets];
 
     // Build batch list: [ { startIdx, tweets[] }, ... ]
@@ -401,7 +401,7 @@ ${sampleNeg.map((t, i) => `${i + 1}. ${t}`).join('\n')}
           max_tokens: 4096,
           messages: [{ role: 'user', content: reportPrompt }],
           response_format: { type: 'json_object' },
-          temperature: 0.3,
+          temperature: 0,
         }),
       });
 
