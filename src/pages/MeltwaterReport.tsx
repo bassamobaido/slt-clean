@@ -14,10 +14,14 @@ import {
   ExternalLink,
   X,
   ChevronUp,
+  ChevronDown,
   Loader2,
   Play,
   Clock,
   Trash2,
+  Heart as HeartIcon,
+  Repeat2,
+  Eye,
 } from 'lucide-react';
 import PageExplainer from '@/components/PageExplainer';
 import { SentimentPieChart } from '@/components/SentimentPieChart';
@@ -60,6 +64,14 @@ function safeParseJSON(raw: string): any {
   }
 
   throw new Error('Could not parse AI response as JSON');
+}
+
+/* ── Smart number formatter ── */
+function formatSmart(n: number): string {
+  if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(1)} مليار`;
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)} مليون`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)} ألف`;
+  return n.toString();
 }
 
 /* ── Saved report row type ── */
@@ -164,6 +176,11 @@ const MeltwaterReport = () => {
   const [analysisProgress, setAnalysisProgress] = useState(0);
   const [analysisError, setAnalysisError] = useState('');
   const [reportInsights, setReportInsights] = useState<ReportInsights | null>(null);
+
+  // Tweet list state
+  const [tweetListLimit, setTweetListLimit] = useState(30);
+  const [tweetSort, setTweetSort] = useState<'newest' | 'engagement' | 'reach' | 'positive' | 'negative'>('newest');
+  const [expandedTweets, setExpandedTweets] = useState<Set<number>>(new Set());
 
   // Computed stats
   const totalTweets = activeTweets.length;
@@ -659,10 +676,10 @@ ${sampleNeg.map((t, i) => `${i + 1}. ${t}`).join('\n')}
         <SectionHeading icon={BarChart3} color="#8B5CF6">نظرة عامة</SectionHeading>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <KpiCard label="التغريدات المحللة" value={String(totalTweets)} sub={`من أصل ${originalCount} (إزالة ${duplicatesRemoved} مكرر)`} color="#8B5CF6" delay={0} />
-          <KpiCard label="إجمالي الوصول" value={`${(totalReach / 1000).toFixed(1)}K`} sub="مجموع reach للتغريدات" color="#0072F9" delay={1} />
-          <KpiCard label="إيجابية" value={`${sentimentPercentages.positive}%`} sub={`${sentimentCounts.positive} تغريدة`} color="#00C17A" delay={2} />
-          <KpiCard label="سلبية" value={`${sentimentPercentages.negative}%`} sub={`${sentimentCounts.negative} تغريدة`} color="#F24935" delay={3} />
+          <KpiCard label="التغريدات المحللة" value={formatSmart(totalTweets)} sub={`من أصل ${formatSmart(originalCount)} (إزالة ${formatSmart(duplicatesRemoved)} مكرر)`} color="#8B5CF6" delay={0} />
+          <KpiCard label="إجمالي الوصول" value={formatSmart(totalReach)} sub="مجموع reach للتغريدات" color="#0072F9" delay={1} />
+          <KpiCard label="إيجابية" value={`${sentimentPercentages.positive}%`} sub={`${formatSmart(sentimentCounts.positive)} تغريدة`} color="#00C17A" delay={2} />
+          <KpiCard label="سلبية" value={`${sentimentPercentages.negative}%`} sub={`${formatSmart(sentimentCounts.negative)} تغريدة`} color="#F24935" delay={3} />
         </div>
 
         {/* KPIs */}
@@ -736,16 +753,16 @@ ${sampleNeg.map((t, i) => `${i + 1}. ${t}`).join('\n')}
                       <p className="text-[11px] font-bold text-muted-foreground/50">{tweet.author}</p>
                       <p className="text-[13px] mt-1 leading-relaxed text-foreground/80">{tweet.text}</p>
                       {tweet.engagement && (
-                        <div className="flex gap-3 mt-2 text-[10px] font-bold text-muted-foreground/40 nums-en">
-                          <span>{tweet.engagement.likes} إعجاب</span>
-                          <span>{tweet.engagement.retweets} إعادة</span>
-                          <span>{tweet.engagement.replies} رد</span>
+                        <div className="flex gap-3 mt-2 text-[10px] font-bold text-muted-foreground/40">
+                          <span>{formatSmart(tweet.engagement.likes)} إعجاب</span>
+                          <span>{formatSmart(tweet.engagement.retweets)} إعادة</span>
+                          <span>{formatSmart(tweet.engagement.replies)} رد</span>
                         </div>
                       )}
                     </div>
                     <div className="flex flex-col items-end gap-1.5 shrink-0">
                       <Badge className={`${getSentimentBadge(tweet.sentiment)} border text-[10px] font-bold`}>{tweet.sentiment}</Badge>
-                      <span className="text-[10px] font-bold text-muted-foreground/40 nums-en">{tweet.reach.toLocaleString()} وصول</span>
+                      <span className="text-[10px] font-bold text-muted-foreground/40">{formatSmart(tweet.reach)} وصول</span>
                     </div>
                   </div>
                 </div>
@@ -969,35 +986,139 @@ ${sampleNeg.map((t, i) => `${i + 1}. ${t}`).join('\n')}
       <section id="tweets" className="scroll-mt-32 space-y-5">
         <div className="flex items-center gap-2">
           <SectionHeading icon={MessageSquare} color="#494C6B">جميع التغريدات المحللة</SectionHeading>
-          <Badge className="bg-foreground text-white border-0 text-[10px] font-bold nums-en mr-2">{totalTweets}</Badge>
+          <Badge className="bg-foreground text-white border-0 text-[10px] font-bold mr-2">{formatSmart(totalTweets)}</Badge>
         </div>
 
-        <div className="space-y-2">
-          {activeTweets.map((tweet, i) => (
-            <div
-              key={tweet.id}
-              className="card-stagger rounded-xl bg-card border border-border/30 px-5 py-4 hover:border-border/50 transition-colors"
-              style={{ animationDelay: `${Math.min(i * 0.02, 0.5)}s` }}
+        {/* Sort controls */}
+        <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+          {([
+            ['newest', 'الأحدث'],
+            ['engagement', 'الأكثر تفاعلاً'],
+            ['reach', 'الأكثر وصولاً'],
+            ['positive', 'إيجابي فقط'],
+            ['negative', 'سلبي فقط'],
+          ] as const).map(([key, label]) => (
+            <button
+              key={key}
+              onClick={() => { setTweetSort(key); setTweetListLimit(30); }}
+              className={`shrink-0 px-3.5 py-2 rounded-xl text-[11px] font-bold transition-all ${
+                tweetSort === key
+                  ? 'bg-foreground text-white'
+                  : 'bg-card border border-border/40 text-muted-foreground/60 hover:text-foreground'
+              }`}
             >
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex-1 min-w-0">
-                  <p className="text-[11px] font-bold text-muted-foreground/40">{tweet.author}</p>
-                  <p className="text-[13px] mt-1 leading-relaxed text-foreground/80">{tweet.text}</p>
-                  <div className="flex flex-wrap gap-1.5 mt-2">
-                    {tweet.keywords.map((kw, ki) => (
-                      <span key={ki} className="px-2 py-0.5 rounded-full bg-muted/40 text-[10px] font-bold text-muted-foreground/50">{kw}</span>
-                    ))}
-                  </div>
-                </div>
-                <div className="flex flex-col items-end gap-1.5 shrink-0">
-                  <Badge className={`${getSentimentBadge(tweet.sentiment)} border text-[10px] font-bold`}>{tweet.sentiment}</Badge>
-                  <Badge className={`${getEmotionBadge(tweet.emotion)} border-0 text-[10px] font-bold`}>{tweet.emotion}</Badge>
-                  <span className="text-[10px] font-bold text-muted-foreground/30 nums-en">{tweet.reach.toLocaleString()} وصول</span>
-                </div>
-              </div>
-            </div>
+              {label}
+            </button>
           ))}
         </div>
+
+        {(() => {
+          // Sort and filter tweets
+          let sorted = [...activeTweets];
+          switch (tweetSort) {
+            case 'engagement':
+              sorted.sort((a, b) => {
+                const eA = (a.engagement?.likes || 0) + (a.engagement?.retweets || 0) + (a.engagement?.replies || 0);
+                const eB = (b.engagement?.likes || 0) + (b.engagement?.retweets || 0) + (b.engagement?.replies || 0);
+                return eB - eA;
+              });
+              break;
+            case 'reach':
+              sorted.sort((a, b) => b.reach - a.reach);
+              break;
+            case 'positive':
+              sorted = sorted.filter(t => t.sentiment === 'إيجابي');
+              break;
+            case 'negative':
+              sorted = sorted.filter(t => t.sentiment === 'سلبي');
+              break;
+          }
+          const visible = sorted.slice(0, tweetListLimit);
+          const hasMore = tweetListLimit < sorted.length;
+
+          return (
+            <>
+              <div className="space-y-2.5">
+                {visible.map((tweet, i) => {
+                  const isExpanded = expandedTweets.has(tweet.id);
+                  const isLong = tweet.text.length > 200;
+                  const displayText = isLong && !isExpanded ? tweet.text.slice(0, 200) + '...' : tweet.text;
+                  const tweetUrl = tweet.author ? `https://twitter.com/${tweet.author.replace('@', '')}` : null;
+
+                  return (
+                    <div
+                      key={tweet.id}
+                      className="card-stagger rounded-xl bg-card border border-border/30 px-5 py-4 hover:border-thmanyah-green/30 transition-colors"
+                      style={{ animationDelay: `${Math.min(i * 0.02, 0.5)}s` }}
+                    >
+                      {/* Row 1: Author + handle */}
+                      <div className="flex items-center justify-between gap-3 mb-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <p className="text-[12px] font-bold text-foreground/80 truncate">{tweet.author}</p>
+                        </div>
+                      </div>
+
+                      {/* Row 2: Tweet text */}
+                      <p className="text-[13px] leading-relaxed text-foreground/80 mb-3">
+                        {displayText}
+                        {isLong && !isExpanded && (
+                          <button
+                            onClick={() => setExpandedTweets(prev => new Set(prev).add(tweet.id))}
+                            className="text-thmanyah-blue text-[11px] font-bold mr-1 hover:underline"
+                          >
+                            المزيد...
+                          </button>
+                        )}
+                      </p>
+
+                      {/* Row 3: Engagement metrics */}
+                      <div className="flex items-center gap-4 mb-2 text-[10px] font-bold text-muted-foreground/50">
+                        {tweet.engagement && (
+                          <>
+                            <span className="inline-flex items-center gap-1"><HeartIcon className="w-3 h-3" />{formatSmart(tweet.engagement.likes)}</span>
+                            <span className="inline-flex items-center gap-1"><MessageSquare className="w-3 h-3" />{formatSmart(tweet.engagement.replies)}</span>
+                            <span className="inline-flex items-center gap-1"><Repeat2 className="w-3 h-3" />{formatSmart(tweet.engagement.retweets)}</span>
+                          </>
+                        )}
+                        <span className="inline-flex items-center gap-1"><Eye className="w-3 h-3" />{formatSmart(tweet.reach)}</span>
+                      </div>
+
+                      {/* Row 4: Badges + link */}
+                      <div className="flex items-center gap-2">
+                        <Badge className={`${getSentimentBadge(tweet.sentiment)} border text-[10px] font-bold`}>{tweet.sentiment}</Badge>
+                        <Badge className={`${getEmotionBadge(tweet.emotion)} border-0 text-[10px] font-bold`}>{tweet.emotion}</Badge>
+                        <div className="flex-1" />
+                        {tweetUrl && (
+                          <a
+                            href={tweetUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-[10px] font-bold text-thmanyah-blue hover:underline"
+                          >
+                            <ExternalLink className="w-3 h-3" />
+                            رابط
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {hasMore && (
+                <div className="flex justify-center pt-2">
+                  <button
+                    onClick={() => setTweetListLimit(prev => prev + 30)}
+                    className="inline-flex items-center gap-1.5 px-6 py-2.5 rounded-xl bg-muted/40 border border-border/30 text-[12px] font-bold text-muted-foreground/60 hover:text-foreground hover:border-border transition-all"
+                  >
+                    <ChevronDown className="w-3.5 h-3.5" />
+                    عرض المزيد ({formatSmart(sorted.length - tweetListLimit)} متبقية)
+                  </button>
+                </div>
+              )}
+            </>
+          );
+        })()}
       </section>
 
       {/* ── Back to top ── */}

@@ -157,7 +157,8 @@ export const WordCloud = ({ tweets }: WordCloudProps) => {
   const sortedWords = useMemo(() => {
     return Object.entries(keywordStats)
       .map(([word, stats]) => ({ word, ...stats, pulse: stats.reach / stats.count }))
-      .sort((a, b) => b.reach - a.reach);
+      .sort((a, b) => b.reach - a.reach)
+      .slice(0, 60);
   }, [keywordStats]);
 
   const maxReach = sortedWords[0]?.reach || 1;
@@ -236,7 +237,7 @@ export const WordCloud = ({ tweets }: WordCloudProps) => {
                 transform: 'scaleX(1.6) scaleY(0.9)',
               }}
             />
-            <div className="relative flex flex-wrap items-center justify-center gap-1 py-8 px-4 min-h-[280px]">
+            <div className="relative flex flex-wrap items-center justify-center gap-1 py-8 px-4 h-[400px] overflow-hidden">
               {sortedWords.map(({ word, reach, count }, index) => (
                 <button
                   key={word}
