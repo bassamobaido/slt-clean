@@ -22,14 +22,16 @@ import {
   Heart as HeartIcon,
   Repeat2,
   Eye,
+  Users,
+  Sparkles,
+  Trophy,
+  Building2,
 } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import PageExplainer from '@/components/PageExplainer';
 import { SentimentPieChart } from '@/components/SentimentPieChart';
-import { TopicCategorization } from '@/components/meltwater/TopicCategorization';
 import { TimelineCharts } from '@/components/meltwater/TimelineCharts';
-import { TopicKPIs } from '@/components/meltwater/TopicKPIs';
 import { ExcelExport } from '@/components/meltwater/ExcelExport';
-import { AboutThamanyah } from '@/components/meltwater/AboutThamanyah';
 import { WordCloud } from '@/components/meltwater/WordCloud';
 import { DataImport } from '@/components/meltwater/DataImport';
 import { Link } from 'react-router-dom';
@@ -42,27 +44,19 @@ import { ar } from 'date-fns/locale';
 /* ── Robust JSON parser ── */
 function safeParseJSON(raw: string): any {
   if (!raw || typeof raw !== 'string') throw new Error('Empty response');
-
-  // Try direct parse first
   try { return JSON.parse(raw); } catch {}
-
-  // Remove markdown fences
   let clean = raw.replace(/```json\s*/gi, '').replace(/```\s*/gi, '').trim();
   try { return JSON.parse(clean); } catch {}
-
-  // Find first { or [ and last } or ]
   const firstBrace = clean.indexOf('{');
   const lastBrace = clean.lastIndexOf('}');
   if (firstBrace >= 0 && lastBrace > firstBrace) {
     try { return JSON.parse(clean.slice(firstBrace, lastBrace + 1)); } catch {}
   }
-
   const firstBracket = clean.indexOf('[');
   const lastBracket = clean.lastIndexOf(']');
   if (firstBracket >= 0 && lastBracket > firstBracket) {
     try { return JSON.parse(clean.slice(firstBracket, lastBracket + 1)); } catch {}
   }
-
   throw new Error('Could not parse AI response as JSON');
 }
 
@@ -72,6 +66,57 @@ function formatSmart(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)} مليون`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)} ألف`;
   return n.toString();
+}
+
+/* ── Tweet type (Meltwater-compatible) ── */
+interface Tweet {
+  id: number;
+  text: string;
+  author: string;
+  authorHandle?: string;
+  authorName?: string;
+  url?: string;
+  date?: string;
+  time?: string;
+  meltwaterKeywords?: string;
+  contentType?: string;
+  sourceName?: string;
+  hashtags?: string;
+  language?: string;
+  reach: number;
+  totalEngagement?: number;
+  views?: number;
+  comments?: number;
+  reposts?: number;
+  sentiment: string;
+  emotion: string;
+  keywords: string[];
+  topics?: string[];
+  engagement: { likes: number; retweets: number; replies: number };
+}
+
+/* ── AI Report Insights (expanded) ── */
+interface ReportTheme { name: string; description: string; percentage: number; sentiment?: string }
+interface ReportIssue { title: string; description: string; severity: 'high' | 'medium' | 'low'; count: number }
+interface ReportInsightItem { title: string; description: string }
+interface ReportRecommendation { title: string; description: string; priority: 'high' | 'medium' | 'low' }
+interface TopTweetAnalysis { rank: number; author: string; engagement: number; summary: string; why_viral: string }
+interface AccountAnalysisItem { mentions: number; sentiment_summary: string }
+
+interface ReportInsights {
+  overall_summary: string;
+  sentiment_analysis: string;
+  visuals?: {
+    description: string;
+    top_topics: string[];
+    key_moments: string[];
+  };
+  top_tweets_analysis?: TopTweetAnalysis[];
+  themes: ReportTheme[];
+  issues: ReportIssue[];
+  insights: ReportInsightItem[];
+  recommendations: ReportRecommendation[];
+  account_analysis?: Record<string, AccountAnalysisItem>;
 }
 
 /* ── Saved report row type ── */
@@ -89,74 +134,18 @@ interface SavedReport {
   created_at: string;
 }
 
-/* ══════════════════════════════════════════════════════════════
-   Sample Data
-   ══════════════════════════════════════════════════════════════ */
-
-const SAMPLE_TWEETS = [
-  { id: 1, text: "ماشاء الله شرح تفصيلي ومشوق ما تمنيت الفيديو يخلص ...عمل جبار تشكرون عليه", author: "@reich_hadhrmi", sentiment: "إيجابي", emotion: "إعجاب", keywords: ["شرح", "عمل جبار", "مشوق"], reach: 210, engagement: { likes: 0, retweets: 0, replies: 0 } },
-  { id: 2, text: "قناه المدلل الزرقاء تطبل لهدف ضمك اللي خسرر واندعس", author: "@qcu8ero", sentiment: "سلبي", emotion: "غضب", keywords: ["تطبل", "خسر", "اندعس"], reach: 223, engagement: { likes: 0, retweets: 0, replies: 0 } },
-  { id: 3, text: "كالعادة .. قناة ثمانية مع لقطة جواو فيلكس .. شاهد ماشفش حاجة !!", author: "@Aljamaz8910", sentiment: "سلبي", emotion: "إحباط", keywords: ["كالعادة", "ماشفش حاجة", "لقطة"], reach: 799, engagement: { likes: 0, retweets: 11, replies: 0 } },
-  { id: 4, text: "في كل مكان ، كريستيانو رونالدو حاضر 🔝🐐", author: "@thmanyahsports", sentiment: "إيجابي", emotion: "حماس", keywords: ["رونالدو", "حاضر", "كريستيانو"], reach: 12760, engagement: { likes: 0, retweets: 1, replies: 0 } },
-  { id: 5, text: "960 هدف ⚽️ رقم جديد للأسطورة كريستيانو رونالدو 🐐", author: "@thmanyahsports", sentiment: "إيجابي", emotion: "فخر", keywords: ["هدف", "أسطورة", "رقم جديد"], reach: 4160, engagement: { likes: 0, retweets: 3, replies: 0 } },
-  { id: 6, text: "اما ثمانية ابومالح فتوجهها بات معلوم للجميع للاسف استغلال الحالة النصراوية للضغط وتشتيت الفريق", author: "@Turki_alharbi44", sentiment: "سلبي", emotion: "استياء", keywords: ["استغلال", "تشتيت", "ابومالح"], reach: 341, engagement: { likes: 0, retweets: 1, replies: 0 } },
-  { id: 7, text: "مراوغة ⬅️➡️ ثم هدف 🎯 #دوري_روشن_السعودي", author: "@thmanyahsports", sentiment: "إيجابي", emotion: "إثارة", keywords: ["مراوغة", "هدف", "دوري روشن"], reach: 436, engagement: { likes: 0, retweets: 6, replies: 0 } },
-  { id: 8, text: "عرضية ساحرة من جواو فيليكس 🤩 #ضمك_النصر", author: "@thmanyahsports", sentiment: "إيجابي", emotion: "إعجاب", keywords: ["ساحرة", "عرضية", "جواو فيليكس"], reach: 2140, engagement: { likes: 0, retweets: 1, replies: 0 } },
-  { id: 9, text: "محاولة تلو الأخرى 🚀 والأسطورة رونالدو دائمًا يصل إلى الشباك ⚽️✅", author: "@thmanyahsports", sentiment: "إيجابي", emotion: "حماس", keywords: ["محاولة", "أسطورة", "الشباك"], reach: 804, engagement: { likes: 0, retweets: 2, replies: 0 } },
-  { id: 10, text: "بما ان نادي أبها أفضل فريق في يلو هو أكثر نادي محتاج رضاء قناة ثمانية لتسليط الأضواء عليهم", author: "@mode_sh10", sentiment: "محايد", emotion: "تساؤل", keywords: ["أبها", "يلو", "تسليط الأضواء"], reach: 611, engagement: { likes: 0, retweets: 0, replies: 0 } },
-  { id: 11, text: "ماذا يحدث في اليمن؟ 🇾🇪 إذا وقفت أمام كل الأخبار عن اليمن ولم تفهم أغلب ما تقرأه، فأنت مثل أغلب العرب", author: "@thmanyah", sentiment: "محايد", emotion: "فضول", keywords: ["اليمن", "أخبار", "شرح"], reach: 413, engagement: { likes: 0, retweets: 0, replies: 0 } },
-  { id: 12, text: "قط رسبت في مادة، أو أخذت فيها درجة دنيئة، وكان السبب أنك لم تدرسها بالعربية؟", author: "@thmanyah", sentiment: "محايد", emotion: "تساؤل", keywords: ["رسبت", "مادة", "العربية"], reach: 75960, engagement: { likes: 0, retweets: 0, replies: 0 } },
-  { id: 13, text: "كالعادة تعمد إخفاء شعبية النصر من قبل الهلالي ابومالح وقناته #ثمانية", author: "@Alqeeran", sentiment: "سلبي", emotion: "غضب", keywords: ["إخفاء", "شعبية", "ابومالح"], reach: 41, engagement: { likes: 0, retweets: 0, replies: 0 } },
-  { id: 14, text: "محمد الخميس ينتقد الناقل الرسمي للدوري 'ثمانية' امس حتى مباراة الاهلي فيها مشاكل بدائية في البث", author: "@1432nayif", sentiment: "سلبي", emotion: "انتقاد", keywords: ["ينتقد", "مشاكل", "البث"], reach: 244, engagement: { likes: 0, retweets: 5, replies: 0 } },
-  { id: 15, text: "اكيد قناة ثمانية متعاقدين مع فارس عوض عشان يغني راب", author: "@kfa7i", sentiment: "محايد", emotion: "سخرية", keywords: ["فارس عوض", "راب", "متعاقدين"], reach: 27420, engagement: { likes: 0, retweets: 0, replies: 0 } },
-  { id: 16, text: "حسبي الله ونعم الوكيل", author: "@himo1947", sentiment: "سلبي", emotion: "استياء", keywords: ["حسبي الله"], reach: 3100, engagement: { likes: 0, retweets: 0, replies: 0 } },
-  { id: 17, text: "مبدع ابن العم كعادتك♥️", author: "@i4wlk", sentiment: "إيجابي", emotion: "إعجاب", keywords: ["مبدع", "كعادتك"], reach: 5, engagement: { likes: 0, retweets: 0, replies: 0 } },
-  { id: 18, text: "في الفيديوهات التأريخية التوثيقية لايريد الحديث إلا عن أشياء مؤكدة صلبة عليها دليل", author: "@tamrh2016", sentiment: "إيجابي", emotion: "تقدير", keywords: ["تأريخية", "توثيقية", "دليل"], reach: 130, engagement: { likes: 0, retweets: 0, replies: 0 } },
-  { id: 19, text: "صباح الخير 🌹 يا جماعة الخير، أبي اشتراك IPTV كفو وبدون أي تقطيع يكون شامل قنوات ثمانية", author: "@MhmdAlshmr79531", sentiment: "محايد", emotion: "طلب", keywords: ["IPTV", "قنوات ثمانية", "بدون تقطيع"], reach: 19, engagement: { likes: 0, retweets: 0, replies: 0 } },
-  { id: 20, text: "ابو ثمانيه 🤣", author: "@4ramosz", sentiment: "محايد", emotion: "سخرية", keywords: ["ابو ثمانيه"], reach: 8, engagement: { likes: 0, retweets: 0, replies: 0 } },
-  { id: 21, text: "هدفنا الانتصار 14 في الدوري 💫 الليلة موعدنا 💙", author: "@Alhilal_FC", sentiment: "إيجابي", emotion: "حماس", keywords: ["الانتصار", "الدوري", "الهلال"], reach: 1580, engagement: { likes: 0, retweets: 0, replies: 0 } },
-  { id: 22, text: "عبدالكريم الجاسر: عندما كان يرأس النصر رئيس ميوله هلالية، سعود السويلم حقق النصر الدوري", author: "@NASRAWEHD", sentiment: "محايد", emotion: "تحليل", keywords: ["النصر", "الدوري", "السويلم"], reach: 43, engagement: { likes: 0, retweets: 0, replies: 0 } },
-  { id: 23, text: "ليت كل دقيقة في المباراة الكرة في رجلك هل هناك لاعب في دوري روشن يصنع اسيست بهذا الجمال والروعه", author: "@Fahadalhurifi", sentiment: "إيجابي", emotion: "إعجاب", keywords: ["اسيست", "دوري روشن", "جمال"], reach: 11080, engagement: { likes: 0, retweets: 0, replies: 0 } },
-  { id: 24, text: "تكلفة جلب حكم اجنبي في الدوري السعودي 450 الف ريال للمباراه الواحده بينما تكلفته في الدوري الاماراتي والقطري لايتجاوز 170 الف", author: "@nzihhh2025", sentiment: "سلبي", emotion: "صدمة", keywords: ["حكم اجنبي", "تكلفة", "الدوري السعودي"], reach: 4920, engagement: { likes: 0, retweets: 0, replies: 0 } },
-  { id: 25, text: "ولا أريد التشكيك في نزاهة جدولة الدوري السعودي، فأنا على يقين تام أن القائمين عليها يراعون الله", author: "@hfc1957_only", sentiment: "محايد", emotion: "تحفظ", keywords: ["جدولة", "الدوري السعودي", "نزاهة"], reach: 1030, engagement: { likes: 0, retweets: 0, replies: 0 } },
-  { id: 26, text: "والله والله لو تكلمونهم beIN وتقولون لهم نبي دورات عندكم وكيف تشتغلون وكيف وصلتو للاحترافية", author: "@hamad_almohisn", sentiment: "سلبي", emotion: "انتقاد", keywords: ["beIN", "احترافية", "نقل سيء"], reach: 1420, engagement: { likes: 0, retweets: 0, replies: 0 } },
-  { id: 27, text: "معقولة قناة ثمانية بعدتها و عتادها و كاميراتها و شغلها و تقنياتها اللي نسمع فيها وللحين ما شفناها", author: "@MaanAlquiae", sentiment: "سلبي", emotion: "إحباط", keywords: ["كاميرات", "تقنيات", "ما شفناها"], reach: 220, engagement: { likes: 0, retweets: 0, replies: 0 } },
-  { id: 28, text: "وش صاير في اليمن؟ هل تعتقد أنها معقدة؟ هذه الحلقة ستفكك لك التعقيد من الحرب العالمية الأولى", author: "@alrougui", sentiment: "إيجابي", emotion: "تقدير", keywords: ["اليمن", "الحرب العالمية", "تفكيك"], reach: 3670, engagement: { likes: 0, retweets: 0, replies: 0 } },
-  { id: 29, text: "الإنتاج جودتة رووووعة نفتخر بك 🇸🇦", author: "@k35g25", sentiment: "إيجابي", emotion: "فخر", keywords: ["إنتاج", "جودة", "نفتخر"], reach: 2750, engagement: { likes: 0, retweets: 0, replies: 0 } },
-  { id: 30, text: "هذا الرجل قناة لحاله سرد تاريخي متسلسل تبسيط أصعب المعلومات جودة وتواريخ مذكوره الله درك يامالك", author: "@21m_ar", sentiment: "إيجابي", emotion: "إعجاب", keywords: ["سرد تاريخي", "تبسيط", "مالك"], reach: 1, engagement: { likes: 0, retweets: 0, replies: 0 } },
-  { id: 31, text: "11 حالة ضد الأزيرق من أول الدوري لم يتم استدعاء الحكم للمراجعة", author: "@abw99902", sentiment: "سلبي", emotion: "غضب", keywords: ["VAR", "استدعاء", "الحكم"], reach: 242, engagement: { likes: 0, retweets: 0, replies: 0 } },
-  { id: 32, text: "الاهلي مب منافس على الدوري بالعناصر ذي والشهرين الجايه بمجرد ما يبدأ التعثر", author: "@w2iac", sentiment: "سلبي", emotion: "تشاؤم", keywords: ["الاهلي", "الدوري", "تعثر"], reach: 147, engagement: { likes: 0, retweets: 0, replies: 0 } },
-  { id: 33, text: "يوم المباراة ، يوم الهلال ، يوم المتصدر 💙 الهلال vs الفيحاء دوري روشن السعودي", author: "@bufaris9", sentiment: "إيجابي", emotion: "حماس", keywords: ["الهلال", "المتصدر", "دوري روشن"], reach: 2730, engagement: { likes: 0, retweets: 0, replies: 0 } },
-  { id: 34, text: "أوه ذا حق اللي طلع مع أبو مالح", author: "@nameless__one1", sentiment: "محايد", emotion: "فضول", keywords: ["أبو مالح"], reach: 581, engagement: { likes: 0, retweets: 0, replies: 0 } },
-  { id: 35, text: "قناة ثمانية هلالية ولكن الشكوى لغير الله مذله احمد ربك ما طلعت فضايحكم", author: "@alallah67343", sentiment: "سلبي", emotion: "استياء", keywords: ["هلالية", "فضايح", "شكوى"], reach: 5, engagement: { likes: 0, retweets: 0, replies: 0 } },
-];
-
-type Tweet = typeof SAMPLE_TWEETS[number];
-
-/* ── AI Report Insights ── */
-interface ReportTheme { name: string; description: string; percentage: number; sentiment: string }
-interface ReportIssue { title: string; description: string; severity: 'high' | 'medium' | 'low'; count: number }
-interface ReportInsight { title: string; description: string }
-interface ReportRecommendation { title: string; description: string; priority: 'high' | 'medium' | 'low' }
-interface ReportInsights {
-  themes: ReportTheme[];
-  issues: ReportIssue[];
-  insights: ReportInsight[];
-  recommendations: ReportRecommendation[];
-  overall_summary: string;
-  sentiment_analysis: string;
-}
-
 /* ── Section navigation items ── */
 const SECTIONS = [
-  { id: "overview", label: "نظرة عامة", icon: BarChart3 },
+  { id: "summary", label: "الملخص", icon: FileText },
+  { id: "visuals", label: "المرئيات", icon: Sparkles },
+  { id: "top10", label: "أعلى ١٠", icon: Trophy },
   { id: "sentiment", label: "المشاعر", icon: Heart },
-  { id: "topics", label: "المواضيع", icon: Target },
-  { id: "timeline", label: "التحليل الزمني", icon: TrendingUp },
-  { id: "issues", label: "المشاكل", icon: AlertTriangle },
+  { id: "themes", label: "المواضيع", icon: Target },
   { id: "insights", label: "الرؤى", icon: Lightbulb },
   { id: "recommendations", label: "التوصيات", icon: CheckCircle },
-  { id: "summary", label: "الملخص", icon: FileText },
+  { id: "accounts", label: "الحسابات", icon: Building2 },
+  { id: "wordcloud", label: "الكلمات", icon: Target },
+  { id: "timeline", label: "الزمني", icon: TrendingUp },
   { id: "tweets", label: "التغريدات", icon: MessageSquare },
 ] as const;
 
@@ -165,12 +154,12 @@ const SECTIONS = [
    ══════════════════════════════════════════════════════════════ */
 
 const MeltwaterReport = () => {
-  const [activeSection, setActiveSection] = useState("overview");
+  const [activeSection, setActiveSection] = useState("summary");
   const [selectedSentiment, setSelectedSentiment] = useState<string | null>(null);
   const mainRef = useRef<HTMLDivElement>(null);
 
   // Data state
-  const [activeTweets, setActiveTweets] = useState<Tweet[]>(SAMPLE_TWEETS);
+  const [activeTweets, setActiveTweets] = useState<Tweet[]>([]);
   const [importedTweets, setImportedTweets] = useState<Tweet[] | null>(null);
   const [analysisState, setAnalysisState] = useState<'idle' | 'ready' | 'analyzing' | 'generating-report' | 'done' | 'error'>('idle');
   const [analysisProgress, setAnalysisProgress] = useState(0);
@@ -181,55 +170,6 @@ const MeltwaterReport = () => {
   const [tweetListLimit, setTweetListLimit] = useState(30);
   const [tweetSort, setTweetSort] = useState<'newest' | 'engagement' | 'reach' | 'positive' | 'negative'>('newest');
   const [expandedTweets, setExpandedTweets] = useState<Set<number>>(new Set());
-
-  // Computed stats
-  const totalTweets = activeTweets.length;
-  const duplicatesRemoved = activeTweets === SAMPLE_TWEETS ? 89 : 0;
-  const originalCount = totalTweets + duplicatesRemoved;
-
-  const sentimentCounts = useMemo(() => ({
-    positive: activeTweets.filter(t => t.sentiment === "إيجابي").length,
-    negative: activeTweets.filter(t => t.sentiment === "سلبي").length,
-    neutral: activeTweets.filter(t => t.sentiment === "محايد").length,
-  }), [activeTweets]);
-
-  const sentimentPercentages = useMemo(() => ({
-    positive: totalTweets ? ((sentimentCounts.positive / totalTweets) * 100).toFixed(1) : "0",
-    negative: totalTweets ? ((sentimentCounts.negative / totalTweets) * 100).toFixed(1) : "0",
-    neutral: totalTweets ? ((sentimentCounts.neutral / totalTweets) * 100).toFixed(1) : "0",
-  }), [sentimentCounts, totalTweets]);
-
-  const emotionCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    activeTweets.forEach(t => { counts[t.emotion] = (counts[t.emotion] || 0) + 1; });
-    return counts;
-  }, [activeTweets]);
-
-  const topKeywords = useMemo(() => {
-    const counts: Record<string, number> = {};
-    activeTweets.forEach(t => { t.keywords.forEach(k => { counts[k] = (counts[k] || 0) + 1; }); });
-    return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 10);
-  }, [activeTweets]);
-
-  const totalReach = useMemo(() => activeTweets.reduce((sum, t) => sum + t.reach, 0), [activeTweets]);
-
-  const sentimentFilteredTweets = useMemo(() => {
-    if (!selectedSentiment) return [];
-    return activeTweets.filter(t => t.sentiment === selectedSentiment);
-  }, [selectedSentiment, activeTweets]);
-
-  // Helper: extract top keywords
-  const getTopKeywords = (tweets: Tweet[], n: number): string[] => {
-    const counts: Record<string, number> = {};
-    tweets.forEach(t => t.keywords.forEach(k => { counts[k] = (counts[k] || 0) + 1; }));
-    return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, n).map(([k]) => k);
-  };
-
-  const getTopEmotions = (tweets: Tweet[], n: number): string[] => {
-    const counts: Record<string, number> = {};
-    tweets.forEach(t => { counts[t.emotion] = (counts[t.emotion] || 0) + 1; });
-    return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, n).map(([k]) => k);
-  };
 
   const queryClient = useQueryClient();
 
@@ -248,17 +188,102 @@ const MeltwaterReport = () => {
     staleTime: 5 * 60 * 1000,
   });
 
-  // Delete a saved report
   const handleDeleteReport = async (id: string) => {
     await (supabase as any).from('meltwater_reports').delete().eq('id', id);
     queryClient.invalidateQueries({ queryKey: ['meltwater-reports'] });
   };
 
-  // Load a saved report
   const handleLoadReport = (report: SavedReport) => {
     setActiveTweets(report.analyzed_tweets);
     setReportInsights(report.report_insights);
     setAnalysisState('done');
+  };
+
+  // Computed stats
+  const totalTweets = activeTweets.length;
+  const sentimentCounts = useMemo(() => ({
+    positive: activeTweets.filter(t => t.sentiment === "إيجابي").length,
+    negative: activeTweets.filter(t => t.sentiment === "سلبي").length,
+    neutral: activeTweets.filter(t => t.sentiment === "محايد").length,
+  }), [activeTweets]);
+
+  const sentimentPercentages = useMemo(() => ({
+    positive: totalTweets ? ((sentimentCounts.positive / totalTweets) * 100).toFixed(1) : "0",
+    negative: totalTweets ? ((sentimentCounts.negative / totalTweets) * 100).toFixed(1) : "0",
+    neutral: totalTweets ? ((sentimentCounts.neutral / totalTweets) * 100).toFixed(1) : "0",
+  }), [sentimentCounts, totalTweets]);
+
+  const emotionCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    activeTweets.forEach(t => { counts[t.emotion] = (counts[t.emotion] || 0) + 1; });
+    return counts;
+  }, [activeTweets]);
+
+  const totalReach = useMemo(() => activeTweets.reduce((sum, t) => sum + t.reach, 0), [activeTweets]);
+  const totalEngagement = useMemo(() => activeTweets.reduce((sum, t) => sum + (t.totalEngagement || (t.engagement.likes + t.engagement.retweets + t.engagement.replies)), 0), [activeTweets]);
+
+  const sentimentFilteredTweets = useMemo(() => {
+    if (!selectedSentiment) return [];
+    return activeTweets.filter(t => t.sentiment === selectedSentiment);
+  }, [selectedSentiment, activeTweets]);
+
+  // Top 10 tweets by engagement
+  const top10Tweets = useMemo(() => {
+    return [...activeTweets]
+      .sort((a, b) => {
+        const eA = a.totalEngagement || (a.engagement.likes + a.engagement.retweets + a.engagement.replies);
+        const eB = b.totalEngagement || (b.engagement.likes + b.engagement.retweets + b.engagement.replies);
+        return eB - eA;
+      })
+      .slice(0, 10);
+  }, [activeTweets]);
+
+  // Account analysis from Keywords column
+  const accountCounts = useMemo(() => {
+    const counts: Record<string, { count: number; positive: number; negative: number; neutral: number }> = {};
+    activeTweets.forEach(t => {
+      const kw = t.meltwaterKeywords || '';
+      // Extract account mentions from Keywords field
+      const accounts: string[] = [];
+      if (/thmanyahsports|رياضة ثمانية/i.test(kw)) accounts.push('رياضة ثمانية');
+      if (/(?:^|;)@?thmanyah(?:$|;)/i.test(kw) || /(?:^|;)ثمانية(?:$|;)/i.test(kw)) accounts.push('ثمانية');
+      if (/قناة ثمانية|قنوات ثمانية/i.test(kw)) accounts.push('قنوات ثمانية');
+      if (/thmanyahexit/i.test(kw)) accounts.push('ثمانية إكزت');
+      if (/thmanyahliving/i.test(kw)) accounts.push('ثمانية ليفنغ');
+      if (/radiothmanyah/i.test(kw)) accounts.push('راديو ثمانية');
+      if (accounts.length === 0) accounts.push('أخرى');
+      accounts.forEach(acc => {
+        if (!counts[acc]) counts[acc] = { count: 0, positive: 0, negative: 0, neutral: 0 };
+        counts[acc].count++;
+        if (t.sentiment === 'إيجابي') counts[acc].positive++;
+        else if (t.sentiment === 'سلبي') counts[acc].negative++;
+        else counts[acc].neutral++;
+      });
+    });
+    return Object.entries(counts).sort((a, b) => b[1].count - a[1].count);
+  }, [activeTweets]);
+
+  // Content type distribution
+  const contentTypeCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    activeTweets.forEach(t => {
+      const ct = t.contentType || 'غير محدد';
+      counts[ct] = (counts[ct] || 0) + 1;
+    });
+    return Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  }, [activeTweets]);
+
+  // Helpers
+  const getTopKeywords = (tweets: Tweet[], n: number): string[] => {
+    const counts: Record<string, number> = {};
+    tweets.forEach(t => t.keywords.forEach(k => { counts[k] = (counts[k] || 0) + 1; }));
+    return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, n).map(([k]) => k);
+  };
+
+  const getTopEmotions = (tweets: Tweet[], n: number): string[] => {
+    const counts: Record<string, number> = {};
+    tweets.forEach(t => { counts[t.emotion] = (counts[t.emotion] || 0) + 1; });
+    return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, n).map(([k]) => k);
   };
 
   // Import handler
@@ -268,7 +293,7 @@ const MeltwaterReport = () => {
     setAnalysisError('');
   };
 
-  // AI Analysis — parallel batches, skip-on-error, auto-save progress
+  // AI Analysis — parallel batches, skip-on-error
   const handleStartAnalysis = async () => {
     if (!importedTweets) return;
 
@@ -288,7 +313,6 @@ const MeltwaterReport = () => {
     const PARALLEL = 5;
     const analyzed = [...importedTweets];
 
-    // Build batch list: [ { startIdx, tweets[] }, ... ]
     const batches: { startIdx: number; tweets: Tweet[] }[] = [];
     for (let i = 0; i < analyzed.length; i += BATCH_SIZE) {
       batches.push({ startIdx: i, tweets: analyzed.slice(i, i + BATCH_SIZE) });
@@ -296,7 +320,6 @@ const MeltwaterReport = () => {
 
     let completedBatches = 0;
 
-    // Single-batch analyzer
     const analyzeBatch = async (batch: { startIdx: number; tweets: Tweet[] }) => {
       const tweetsText = batch.tweets.map((t, i) => `[${i + 1}] ${t.text}`).join('\n');
 
@@ -315,10 +338,10 @@ const MeltwaterReport = () => {
               content: `أنت محلل مشاعر متخصص في النصوص العربية. حلل التغريدات المرقمة وأرجع JSON فقط.
 لكل تغريدة أرجع:
 - index: رقم التغريدة (يبدأ من 1)
-- sentiment: إيجابي أو سلبي أو محايد
-- emotion: العاطفة (إعجاب، غضب، إحباط، حماس، فخر، استياء، إثارة، تساؤل، فضول، سخرية، انتقاد، تقدير، تشاؤم، صدمة، طلب، تحفظ، تحليل، محايد)
-- keywords: أهم 2-4 كلمات مفتاحية
-أرجع JSON بالشكل: {"results":[{"index":1,"sentiment":"...","emotion":"...","keywords":["..."]},...]}
+- sentiment: إيجابي أو سلبي أو محايد أو ساخر
+- emotion: الفرح أو الغضب أو الحماس أو السخرية أو الإحباط أو الدعم أو الانتقاد أو محايد
+- topics: قائمة 1-3 مواضيع
+أرجع JSON بالشكل: {"results":[{"index":1,"sentiment":"...","emotion":"...","topics":["..."]},...]}
 أجب بصيغة JSON فقط. لا تكتب أي نص قبل أو بعد الـ JSON.`,
             },
             { role: 'user', content: tweetsText },
@@ -342,33 +365,29 @@ const MeltwaterReport = () => {
             ...analyzed[idx],
             sentiment: r.sentiment || analyzed[idx].sentiment,
             emotion: r.emotion || analyzed[idx].emotion,
-            keywords: Array.isArray(r.keywords) ? r.keywords : analyzed[idx].keywords,
+            keywords: Array.isArray(r.topics) ? r.topics : analyzed[idx].keywords,
+            topics: Array.isArray(r.topics) ? r.topics : [],
           };
         }
       }
     };
 
-    // Parallel worker: pick next batch, run it, skip on error, repeat
     let batchIndex = 0;
     const processNext = async (): Promise<void> => {
       const idx = batchIndex++;
       if (idx >= batches.length) return;
-
       try {
         await analyzeBatch(batches[idx]);
       } catch (err) {
         console.error(`Batch ${idx + 1}/${batches.length} failed, skipping:`, err);
       }
-
       completedBatches++;
       setAnalysisProgress(Math.round((completedBatches / batches.length) * 100));
-      setActiveTweets([...analyzed]); // save progress after each batch
+      setActiveTweets([...analyzed]);
       return processNext();
     };
 
-    // Run PARALLEL workers concurrently
     await Promise.all(Array.from({ length: PARALLEL }, () => processNext()));
-
     setActiveTweets([...analyzed]);
 
     // Phase 2: Generate report insights
@@ -383,31 +402,69 @@ const MeltwaterReport = () => {
       };
       const kwList = getTopKeywords(analyzed, 10);
       const emList = getTopEmotions(analyzed, 10);
-      const samplePos = analyzed.filter(t => t.sentiment === 'إيجابي').slice(0, 3).map(t => t.text);
-      const sampleNeg = analyzed.filter(t => t.sentiment === 'سلبي').slice(0, 3).map(t => t.text);
 
-      const reportPrompt = `أنت محلل بيانات متخصص في تحليل وسائل التواصل الاجتماعي لشركة ثمانية الإعلامية السعودية.
+      // Top 10 by engagement for the prompt
+      const top10 = [...analyzed]
+        .sort((a, b) => {
+          const eA = a.totalEngagement || (a.engagement.likes + a.engagement.retweets + a.engagement.replies);
+          const eB = b.totalEngagement || (b.engagement.likes + b.engagement.retweets + b.engagement.replies);
+          return eB - eA;
+        })
+        .slice(0, 10);
+      const top10Text = top10.map((t, i) => {
+        const eng = t.totalEngagement || (t.engagement.likes + t.engagement.retweets + t.engagement.replies);
+        return `${i + 1}. [${t.author}] (تفاعل: ${eng}) ${t.text.slice(0, 150)}`;
+      }).join('\n');
 
-حللت ${analyzed.length} تغريدة/منشور. هذا ملخص النتائج:
+      // Content type distribution
+      const ctDist: Record<string, number> = {};
+      analyzed.forEach(t => { ctDist[t.contentType || 'unknown'] = (ctDist[t.contentType || 'unknown'] || 0) + 1; });
+      const ctText = Object.entries(ctDist).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k}: ${v}`).join(', ');
 
-التوزيع العاطفي:
-- إيجابي: ${sentimentSummary.positive} (${Math.round(100 * sentimentSummary.positive / analyzed.length)}%)
-- سلبي: ${sentimentSummary.negative} (${Math.round(100 * sentimentSummary.negative / analyzed.length)}%)
-- محايد: ${sentimentSummary.neutral} (${Math.round(100 * sentimentSummary.neutral / analyzed.length)}%)
+      // Account mentions
+      const accMentions: Record<string, number> = {};
+      analyzed.forEach(t => {
+        const kw = t.meltwaterKeywords || '';
+        if (/thmanyahsports/i.test(kw)) accMentions['رياضة ثمانية'] = (accMentions['رياضة ثمانية'] || 0) + 1;
+        if (/(?:^|;)@?thmanyah(?:$|;)/i.test(kw)) accMentions['ثمانية'] = (accMentions['ثمانية'] || 0) + 1;
+      });
+      const accText = Object.entries(accMentions).map(([k, v]) => `${k}: ${v} ذكر`).join(', ');
 
-أكثر الكلمات تكراراً: ${kwList.join('، ')}
-أكثر المشاعر: ${emList.join('، ')}
+      // Top hashtags
+      const hashCounts: Record<string, number> = {};
+      analyzed.forEach(t => {
+        if (t.hashtags) {
+          t.hashtags.split(';').map(h => h.trim()).filter(Boolean).forEach(h => {
+            hashCounts[h] = (hashCounts[h] || 0) + 1;
+          });
+        }
+      });
+      const topHashtags = Object.entries(hashCounts).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([h, c]) => `${h} (${c})`).join(', ');
 
-عينة إيجابية:
-${samplePos.map((t, i) => `${i + 1}. ${t}`).join('\n')}
+      const samplePos = analyzed.filter(t => t.sentiment === 'إيجابي').slice(0, 3).map(t => t.text.slice(0, 100));
+      const sampleNeg = analyzed.filter(t => t.sentiment === 'سلبي').slice(0, 3).map(t => t.text.slice(0, 100));
 
-عينة سلبية:
-${sampleNeg.map((t, i) => `${i + 1}. ${t}`).join('\n')}
+      const reportPrompt = `أنت محلل بيانات متخصص في وسائل التواصل الاجتماعي لشركة ثمانية الإعلامية السعودية.
+
+حللت ${analyzed.length} منشور. النتائج:
+
+المشاعر: إيجابي ${sentimentSummary.positive} (${Math.round(100 * sentimentSummary.positive / analyzed.length)}%) | سلبي ${sentimentSummary.negative} (${Math.round(100 * sentimentSummary.negative / analyzed.length)}%) | محايد ${sentimentSummary.neutral}
+أنواع المحتوى: ${ctText}
+الحسابات: ${accText || 'غير متوفر'}
+هاشتاقات: ${topHashtags || 'لا يوجد'}
+كلمات: ${kwList.join('، ')}
+مشاعر: ${emList.join('، ')}
+
+أكثر 10 تغريدات تفاعلاً:
+${top10Text}
+
+عينة إيجابية: ${samplePos.join(' | ')}
+عينة سلبية: ${sampleNeg.join(' | ')}
 
 أعطني تحليلاً بصيغة JSON:
-{"themes":[{"name":"...","description":"...","percentage":25,"sentiment":"..."}],"issues":[{"title":"...","description":"...","severity":"high","count":15}],"insights":[{"title":"...","description":"..."}],"recommendations":[{"title":"...","description":"...","priority":"high"}],"overall_summary":"...","sentiment_analysis":"..."}
+{"overall_summary":"ملخص 3-4 جمل","sentiment_analysis":"تحليل مشاعر 2-3 جمل","visuals":{"description":"وصف ما تفاعل عليه الناس","top_topics":["موضوع1","موضوع2"],"key_moments":["لحظة1","لحظة2"]},"top_tweets_analysis":[{"rank":1,"author":"@handle","engagement":2055,"summary":"وصف","why_viral":"لماذا"}],"themes":[{"name":"...","description":"...","percentage":25}],"insights":[{"title":"...","description":"..."}],"recommendations":[{"title":"...","description":"...","priority":"high"}],"account_analysis":{"رياضة ثمانية":{"mentions":2703,"sentiment_summary":"..."}}}
 
-3-5 لكل قسم. بالعربية.
+3-5 لكل قسم. 10 تغريدات في top_tweets_analysis. بالعربية.
 أجب بصيغة JSON فقط. لا تكتب أي نص قبل أو بعد الـ JSON.`;
 
       const reportRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
@@ -434,7 +491,7 @@ ${sampleNeg.map((t, i) => `${i + 1}. ${t}`).join('\n')}
       const neuCount = analyzed.filter(t => t.sentiment === 'محايد').length;
       try {
         await (supabase as any).from('meltwater_reports').insert({
-          title: `تقرير ${new Date().toLocaleDateString('ar-SA')} — ${analyzed.length} تغريدة`,
+          title: `تقرير ${new Date().toLocaleDateString('ar-SA')} — ${analyzed.length} منشور`,
           tweet_count: analyzed.length,
           positive_count: posCount,
           negative_count: negCount,
@@ -445,17 +502,15 @@ ${sampleNeg.map((t, i) => `${i + 1}. ${t}`).join('\n')}
           summary: insights.overall_summary || '',
         });
         queryClient.invalidateQueries({ queryKey: ['meltwater-reports'] });
-      } catch (_) { /* silent — report still displays even if save fails */ }
+      } catch (_) { /* silent */ }
 
       setAnalysisState('done');
     } catch (err: any) {
-      // Phase 2 failed but Phase 1 data is already saved in activeTweets
       setAnalysisError(err.message || 'حدث خطأ أثناء إعداد التقرير');
-      setAnalysisState('done'); // still show results — Phase 1 data is valid
+      setAnalysisState('done'); // still show Phase 1 data
     }
   };
 
-  // Use imported data directly without AI analysis
   const handleUseDirectly = () => {
     if (!importedTweets) return;
     setActiveTweets(importedTweets);
@@ -472,27 +527,38 @@ ${sampleNeg.map((t, i) => `${i + 1}. ${t}`).join('\n')}
     switch (sentiment) {
       case "إيجابي": return "bg-thmanyah-green/10 text-thmanyah-green border-thmanyah-green/20";
       case "سلبي": return "bg-thmanyah-red/10 text-thmanyah-red border-thmanyah-red/20";
+      case "ساخر": return "bg-thmanyah-amber/10 text-thmanyah-amber border-thmanyah-amber/20";
       default: return "bg-muted text-muted-foreground border-border/50";
     }
   };
 
   const getEmotionBadge = (emotion: string) => {
     const map: Record<string, string> = {
+      "الفرح": "bg-thmanyah-green/10 text-thmanyah-green",
+      "الغضب": "bg-thmanyah-red/10 text-thmanyah-red",
+      "الحماس": "bg-thmanyah-blue/10 text-thmanyah-blue",
+      "السخرية": "bg-thmanyah-amber/10 text-thmanyah-amber",
+      "الإحباط": "bg-thmanyah-amber/10 text-thmanyah-amber",
+      "الدعم": "bg-thmanyah-green/10 text-thmanyah-green",
+      "الانتقاد": "bg-thmanyah-red/10 text-thmanyah-red",
       "إعجاب": "bg-thmanyah-blue/10 text-thmanyah-blue",
       "غضب": "bg-thmanyah-red/10 text-thmanyah-red",
-      "إحباط": "bg-thmanyah-amber/10 text-thmanyah-amber",
       "حماس": "bg-thmanyah-green/10 text-thmanyah-green",
       "فخر": "bg-purple-500/10 text-purple-600",
       "استياء": "bg-thmanyah-amber/10 text-thmanyah-amber",
-      "إثارة": "bg-thmanyah-red/10 text-thmanyah-red",
-      "تساؤل": "bg-thmanyah-blue/10 text-thmanyah-blue",
-      "فضول": "bg-thmanyah-blue/10 text-thmanyah-blue",
-      "سخرية": "bg-thmanyah-amber/10 text-thmanyah-amber",
-      "انتقاد": "bg-thmanyah-red/10 text-thmanyah-red",
-      "تقدير": "bg-thmanyah-green/10 text-thmanyah-green",
     };
     return map[emotion] || "bg-muted text-muted-foreground";
   };
+
+  // Account bar chart data
+  const accountChartData = useMemo(() => {
+    const COLORS = ['#0072F9', '#00C17A', '#F24935', '#FFBC0A', '#8B5CF6', '#FF00B7'];
+    return accountCounts.map(([name, data], i) => ({
+      name,
+      value: data.count,
+      color: COLORS[i % COLORS.length],
+    }));
+  }, [accountCounts]);
 
   return (
     <div ref={mainRef} className="max-w-7xl mx-auto space-y-8">
@@ -500,7 +566,7 @@ ${sampleNeg.map((t, i) => `${i + 1}. ${t}`).join('\n')}
       <PageExplainer
         icon={BarChart3}
         title="تقارير Meltwater"
-        description="عرض تفاعلي شامل يتضمن تحليل المشاعر والاتجاهات والرسوم البيانية من تقارير Meltwater"
+        description="استيراد وتحليل بيانات Meltwater بالذكاء الاصطناعي — تحليل المشاعر والمواضيع والرؤى"
         color="#8B5CF6"
       />
 
@@ -518,34 +584,25 @@ ${sampleNeg.map((t, i) => `${i + 1}. ${t}`).join('\n')}
               const negPct = total ? Math.round((report.negative_count / total) * 100) : 0;
               const neuPct = total ? Math.round((report.neutral_count / total) * 100) : 0;
               return (
-                <div
-                  key={report.id}
-                  onClick={() => handleLoadReport(report)}
-                  className="shrink-0 w-[260px] rounded-2xl bg-card border border-border/40 p-4 cursor-pointer hover:border-thmanyah-blue/40 hover:shadow-md transition-all group"
-                >
+                <div key={report.id} onClick={() => handleLoadReport(report)}
+                  className="shrink-0 w-[260px] rounded-2xl bg-card border border-border/40 p-4 cursor-pointer hover:border-thmanyah-blue/40 hover:shadow-md transition-all group">
                   <div className="flex items-start justify-between gap-2 mb-2">
                     <h4 className="text-[12px] font-bold text-foreground/80 leading-snug line-clamp-2">{report.title}</h4>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); handleDeleteReport(report.id); }}
-                      className="shrink-0 p-1 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-thmanyah-red/10 transition-all"
-                    >
+                    <button onClick={(e) => { e.stopPropagation(); handleDeleteReport(report.id); }}
+                      className="shrink-0 p-1 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-thmanyah-red/10 transition-all">
                       <Trash2 className="w-3.5 h-3.5 text-thmanyah-red" />
                     </button>
                   </div>
                   <p className="text-[10px] font-bold text-muted-foreground/40 mb-2">
                     {formatDistanceToNow(new Date(report.created_at), { addSuffix: true, locale: ar })}
-                    {' · '}
-                    <span className="nums-en">{report.tweet_count}</span> تغريدة
+                    {' · '}<span className="nums-en">{report.tweet_count}</span> منشور
                   </p>
-                  {/* Sentiment mini bar */}
                   <div className="flex h-1.5 rounded-full overflow-hidden bg-muted/20 mb-2">
                     <div className="bg-thmanyah-green" style={{ width: `${posPct}%` }} />
                     <div className="bg-muted-foreground/30" style={{ width: `${neuPct}%` }} />
                     <div className="bg-thmanyah-red" style={{ width: `${negPct}%` }} />
                   </div>
-                  {report.summary && (
-                    <p className="text-[10px] font-bold text-muted-foreground/40 leading-relaxed line-clamp-2">{report.summary}</p>
-                  )}
+                  {report.summary && <p className="text-[10px] font-bold text-muted-foreground/40 leading-relaxed line-clamp-2">{report.summary}</p>}
                 </div>
               );
             })}
@@ -554,65 +611,54 @@ ${sampleNeg.map((t, i) => `${i + 1}. ${t}`).join('\n')}
       )}
 
       {/* ── Section Navigation ── */}
-      <nav className="card-stagger sticky top-16 z-30 -mx-2 px-2 py-3 bg-background/80 backdrop-blur-xl border-b border-border/30" style={{ animationDelay: "0.05s" }}>
-        <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-          {SECTIONS.map((s) => {
-            const Icon = s.icon;
-            const isActive = activeSection === s.id;
-            return (
-              <button
-                key={s.id}
-                onClick={() => scrollTo(s.id)}
-                className={`shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[12px] font-bold transition-all duration-200 ${
-                  isActive
-                    ? "bg-foreground text-white shadow-md"
-                    : "bg-card border border-border/40 text-muted-foreground/60 hover:text-foreground hover:border-border"
-                }`}
-              >
-                <Icon className="w-3.5 h-3.5" strokeWidth={1.8} />
-                {s.label}
-              </button>
-            );
-          })}
-        </div>
-      </nav>
+      {activeTweets.length > 0 && (
+        <nav className="card-stagger sticky top-16 z-30 -mx-2 px-2 py-3 bg-background/80 backdrop-blur-xl border-b border-border/30" style={{ animationDelay: "0.05s" }}>
+          <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+            {SECTIONS.map((s) => {
+              const Icon = s.icon;
+              const isActive = activeSection === s.id;
+              return (
+                <button key={s.id} onClick={() => scrollTo(s.id)}
+                  className={`shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[12px] font-bold transition-all duration-200 ${
+                    isActive ? "bg-foreground text-white shadow-md" : "bg-card border border-border/40 text-muted-foreground/60 hover:text-foreground hover:border-border"
+                  }`}>
+                  <Icon className="w-3.5 h-3.5" strokeWidth={1.8} />
+                  {s.label}
+                </button>
+              );
+            })}
+          </div>
+        </nav>
+      )}
 
       {/* ── Data Import & Export ── */}
       <div className="card-stagger grid grid-cols-1 md:grid-cols-2 gap-4" style={{ animationDelay: "0.1s" }}>
         <DataImport onImport={handleImport} />
-        <ExcelExport tweets={activeTweets} reportDate="2026-01-22" />
+        <ExcelExport tweets={activeTweets as any} reportDate={new Date().toISOString().slice(0, 10)} />
       </div>
 
       {/* ── Analysis Controls ── */}
-      {analysisState !== 'idle' && (
+      {analysisState !== 'idle' && analysisState !== 'done' && (
         <div className="card-stagger rounded-2xl bg-card border border-border/40 p-6 text-center space-y-4" style={{ animationDelay: "0.15s" }}>
           {analysisState === 'ready' && (
             <>
               <div className="flex items-center justify-center gap-2 text-thmanyah-green mb-2">
                 <CheckCircle className="w-5 h-5" />
-                <span className="text-[14px] font-bold">تم استيراد {importedTweets?.length} تغريدة بنجاح</span>
+                <span className="text-[14px] font-bold">تم استيراد {formatSmart(importedTweets?.length || 0)} منشور بنجاح</span>
               </div>
               <div className="flex items-center justify-center gap-3">
-                <button
-                  onClick={handleStartAnalysis}
-                  className="inline-flex items-center gap-2 px-8 py-3.5 rounded-2xl bg-thmanyah-green text-white font-bold text-[15px] hover:bg-thmanyah-green/90 transition-all shadow-lg shadow-thmanyah-green/20"
-                >
+                <button onClick={handleStartAnalysis}
+                  className="inline-flex items-center gap-2 px-8 py-3.5 rounded-2xl bg-thmanyah-green text-white font-bold text-[15px] hover:bg-thmanyah-green/90 transition-all shadow-lg shadow-thmanyah-green/20">
                   <Play className="w-5 h-5" />
                   ابدأ التحليل
                 </button>
-                <button
-                  onClick={handleUseDirectly}
-                  className="inline-flex items-center gap-2 px-6 py-3.5 rounded-2xl border border-border/40 text-muted-foreground font-bold text-[13px] hover:bg-muted/30 transition-all"
-                >
+                <button onClick={handleUseDirectly}
+                  className="inline-flex items-center gap-2 px-6 py-3.5 rounded-2xl border border-border/40 text-muted-foreground font-bold text-[13px] hover:bg-muted/30 transition-all">
                   استخدام البيانات مباشرة
                 </button>
               </div>
-              <p className="text-[11px] font-bold text-muted-foreground/40">
-                سيتم تحليل المشاعر والعواطف والكلمات المفتاحية باستخدام الذكاء الاصطناعي
-              </p>
             </>
           )}
-
           {analysisState === 'analyzing' && (
             <>
               <Loader2 className="w-8 h-8 text-thmanyah-green animate-spin mx-auto" />
@@ -621,22 +667,12 @@ ${sampleNeg.map((t, i) => `${i + 1}. ${t}`).join('\n')}
               <p className="text-[11px] font-bold text-muted-foreground/40">{analysisProgress}%</p>
             </>
           )}
-
           {analysisState === 'generating-report' && (
             <>
               <Loader2 className="w-8 h-8 text-thmanyah-blue animate-spin mx-auto" />
               <p className="text-[14px] font-bold text-foreground/80">جاري إعداد التقرير الشامل...</p>
-              <p className="text-[11px] font-bold text-muted-foreground/40">تحليل الأنماط واستخلاص الرؤى والتوصيات</p>
             </>
           )}
-
-          {analysisState === 'done' && (
-            <div className="flex items-center justify-center gap-2 text-thmanyah-green">
-              <CheckCircle className="w-5 h-5" />
-              <span className="text-[14px] font-bold">تم التحليل بنجاح! التقرير أدناه يعكس البيانات المستوردة.</span>
-            </div>
-          )}
-
           {analysisState === 'error' && (
             <div className="space-y-3">
               {analysisError === 'no-key' ? (
@@ -646,8 +682,7 @@ ${sampleNeg.map((t, i) => `${i + 1}. ${t}`).join('\n')}
                     <span className="text-[14px] font-bold">يجب إضافة مفتاح OpenRouter API أولاً</span>
                   </div>
                   <Link to="/settings" className="inline-flex items-center gap-1.5 text-[12px] font-bold text-thmanyah-blue hover:underline">
-                    الذهاب للإعدادات
-                    <ExternalLink className="w-3 h-3" />
+                    الذهاب للإعدادات <ExternalLink className="w-3 h-3" />
                   </Link>
                 </>
               ) : (
@@ -656,12 +691,7 @@ ${sampleNeg.map((t, i) => `${i + 1}. ${t}`).join('\n')}
                     <AlertTriangle className="w-5 h-5" />
                     <span className="text-[14px] font-bold">{analysisError}</span>
                   </div>
-                  <button
-                    onClick={handleStartAnalysis}
-                    className="text-[12px] font-bold text-thmanyah-blue hover:underline"
-                  >
-                    إعادة المحاولة
-                  </button>
+                  <button onClick={handleStartAnalysis} className="text-[12px] font-bold text-thmanyah-blue hover:underline">إعادة المحاولة</button>
                 </>
               )}
             </div>
@@ -669,468 +699,475 @@ ${sampleNeg.map((t, i) => `${i + 1}. ${t}`).join('\n')}
         </div>
       )}
 
-      {/* ══════════════════════════════════════════
-          SECTION: Overview
-          ══════════════════════════════════════════ */}
-      <section id="overview" className="scroll-mt-32 space-y-5">
-        <SectionHeading icon={BarChart3} color="#8B5CF6">نظرة عامة</SectionHeading>
+      {/* ════════════════════════════════════════════════════════════
+          REPORT SECTIONS — only show when we have data
+          ════════════════════════════════════════════════════════════ */}
+      {activeTweets.length > 0 && (
+        <>
+          {/* ═══ 1. الملخص العام ═══ */}
+          <section id="summary" className="scroll-mt-32 space-y-5">
+            <SectionHeading icon={FileText} color="#8B5CF6">الملخص العام</SectionHeading>
 
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <KpiCard label="التغريدات المحللة" value={formatSmart(totalTweets)} sub={`من أصل ${formatSmart(originalCount)} (إزالة ${formatSmart(duplicatesRemoved)} مكرر)`} color="#8B5CF6" delay={0} />
-          <KpiCard label="إجمالي الوصول" value={formatSmart(totalReach)} sub="مجموع reach للتغريدات" color="#0072F9" delay={1} />
-          <KpiCard label="إيجابية" value={`${sentimentPercentages.positive}%`} sub={`${formatSmart(sentimentCounts.positive)} تغريدة`} color="#00C17A" delay={2} />
-          <KpiCard label="سلبية" value={`${sentimentPercentages.negative}%`} sub={`${formatSmart(sentimentCounts.negative)} تغريدة`} color="#F24935" delay={3} />
-        </div>
-
-        {/* KPIs */}
-        <TopicKPIs tweets={activeTweets} />
-
-        {/* About Thamanyah */}
-        <div className="space-y-3">
-          <h3 className="text-[14px] font-display font-bold text-foreground/70">عن ثمانية وليس عن ثمانية</h3>
-          <AboutThamanyah tweets={activeTweets} />
-        </div>
-      </section>
-
-      {/* ══════════════════════════════════════════
-          SECTION: Sentiment & Emotions
-          ══════════════════════════════════════════ */}
-      <section id="sentiment" className="scroll-mt-32 space-y-5">
-        <SectionHeading icon={Heart} color="#E4405F">توزيع المشاعر والعواطف</SectionHeading>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-          {/* Sentiment Pie */}
-          <div className="card-stagger rounded-2xl bg-card border border-border/40 p-6" style={{ animationDelay: "0s" }}>
-            <div className="flex items-center gap-2 mb-4">
-              <BarChart3 className="w-4 h-4 text-muted-foreground/50" strokeWidth={1.8} />
-              <h3 className="text-[14px] font-display font-bold text-foreground/80">توزيع المشاعر</h3>
-            </div>
-            <SentimentPieChart
-              positive={sentimentCounts.positive}
-              negative={sentimentCounts.negative}
-              neutral={sentimentCounts.neutral}
-              onSliceClick={(sentiment) => setSelectedSentiment(selectedSentiment === sentiment ? null : sentiment)}
-            />
-          </div>
-
-          {/* Emotions */}
-          <div className="card-stagger rounded-2xl bg-card border border-border/40 p-6" style={{ animationDelay: "0.05s" }}>
-            <div className="flex items-center gap-2 mb-4">
-              <Heart className="w-4 h-4 text-muted-foreground/50" strokeWidth={1.8} />
-              <h3 className="text-[14px] font-display font-bold text-foreground/80">توزيع العواطف</h3>
-            </div>
-            <div className="space-y-2.5">
-              {Object.entries(emotionCounts)
-                .sort((a, b) => b[1] - a[1])
-                .map(([emotion, count]) => (
-                  <div key={emotion} className="flex items-center gap-3">
-                    <Badge className={`${getEmotionBadge(emotion)} border-0 text-[11px] font-bold min-w-[60px] justify-center`}>{emotion}</Badge>
-                    <Progress value={(count / totalTweets) * 100} className="flex-1 h-2" />
-                    <span className="text-[11px] font-bold text-muted-foreground/50 w-6 text-left nums-en">{count}</span>
-                  </div>
-                ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Filtered tweets drawer */}
-        {selectedSentiment && (
-          <div className="card-stagger rounded-2xl bg-card border border-border/40 overflow-hidden" style={{ animationDelay: "0s" }}>
-            <div className="flex items-center justify-between px-5 py-4 border-b border-border/30">
-              <div className="flex items-center gap-2">
-                <h3 className="text-[14px] font-display font-bold text-foreground/80">تغريدات &ldquo;{selectedSentiment}&rdquo;</h3>
-                <Badge className="bg-foreground text-white border-0 text-[10px] font-bold nums-en">{sentimentFilteredTweets.length}</Badge>
+            {reportInsights && (
+              <div className="card-stagger rounded-2xl bg-card border border-border/40 p-6 space-y-4" style={{ animationDelay: "0s" }}>
+                <p className="text-[13px] font-bold text-foreground/80 leading-relaxed">{reportInsights.overall_summary}</p>
+                <div className="h-px bg-border/40" />
+                <p className="text-[12px] font-bold text-muted-foreground/60 leading-relaxed">{reportInsights.sentiment_analysis}</p>
               </div>
-              <button onClick={() => setSelectedSentiment(null)} className="p-1.5 rounded-lg hover:bg-muted/30 transition-colors">
-                <X className="w-4 h-4 text-muted-foreground/40" />
-              </button>
+            )}
+
+            <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+              <KpiCard label="المنشورات" value={formatSmart(totalTweets)} sub="إجمالي" color="#8B5CF6" delay={0} />
+              <KpiCard label="إيجابي" value={`${sentimentPercentages.positive}%`} sub={`${formatSmart(sentimentCounts.positive)}`} color="#00C17A" delay={1} />
+              <KpiCard label="سلبي" value={`${sentimentPercentages.negative}%`} sub={`${formatSmart(sentimentCounts.negative)}`} color="#F24935" delay={2} />
+              <KpiCard label="محايد" value={`${sentimentPercentages.neutral}%`} sub={`${formatSmart(sentimentCounts.neutral)}`} color="#6B7280" delay={3} />
+              <KpiCard label="الوصول" value={formatSmart(totalReach)} sub="إجمالي" color="#0072F9" delay={4} />
+              <KpiCard label="التفاعل" value={formatSmart(totalEngagement)} sub="إجمالي" color="#FFBC0A" delay={5} />
             </div>
-            <div className="divide-y divide-border/20 max-h-[400px] overflow-y-auto">
-              {sentimentFilteredTweets.map(tweet => (
-                <div key={tweet.id} className="px-5 py-4 hover:bg-muted/10 transition-colors">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1 min-w-0">
+          </section>
+
+          {/* ═══ 2. المرئيات ═══ */}
+          {reportInsights?.visuals && (
+            <section id="visuals" className="scroll-mt-32 space-y-5">
+              <SectionHeading icon={Sparkles} color="#FF00B7">ما تفاعل عليه الناس</SectionHeading>
+
+              <div className="card-stagger rounded-2xl bg-card border border-border/40 p-6 space-y-4" style={{ animationDelay: "0s" }}>
+                <p className="text-[13px] font-bold text-foreground/80 leading-relaxed">{reportInsights.visuals.description}</p>
+
+                {reportInsights.visuals.top_topics.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {reportInsights.visuals.top_topics.map((topic, i) => (
+                      <span key={i} className="px-3 py-1.5 rounded-full bg-purple-500/10 border border-purple-500/20 text-[12px] font-bold text-purple-600">{topic}</span>
+                    ))}
+                  </div>
+                )}
+
+                {reportInsights.visuals.key_moments.length > 0 && (
+                  <div className="space-y-2 mt-3">
+                    <h4 className="text-[12px] font-display font-bold text-foreground/60">اللحظات الرئيسية</h4>
+                    {reportInsights.visuals.key_moments.map((moment, i) => (
+                      <div key={i} className="flex items-start gap-2">
+                        <div className="shrink-0 w-5 h-5 rounded-full bg-purple-500/10 flex items-center justify-center text-[10px] font-bold text-purple-600">{i + 1}</div>
+                        <p className="text-[12px] font-bold text-muted-foreground/60 leading-relaxed">{moment}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </section>
+          )}
+
+          {/* ═══ 3. أكثر ١٠ تغريدات تفاعلاً ═══ */}
+          <section id="top10" className="scroll-mt-32 space-y-5">
+            <SectionHeading icon={Trophy} color="#FFBC0A">أكثر ١٠ منشورات تفاعلاً</SectionHeading>
+
+            <div className="space-y-3">
+              {top10Tweets.map((tweet, i) => {
+                const eng = tweet.totalEngagement || (tweet.engagement.likes + tweet.engagement.retweets + tweet.engagement.replies);
+                const aiAnalysis = reportInsights?.top_tweets_analysis?.find(t => t.rank === i + 1);
+                const RANK_COLORS = ['#FFBC0A', '#C0C0C0', '#CD7F32', '#8B5CF6', '#0072F9', '#00C17A', '#F24935', '#FF00B7', '#84DBE5', '#6B7280'];
+
+                return (
+                  <div key={tweet.id} className="card-stagger rounded-2xl bg-card border border-border/40 p-5 hover:border-thmanyah-amber/30 transition-colors" style={{ animationDelay: `${Math.min(i * 0.03, 0.3)}s` }}>
+                    <div className="flex items-start gap-4">
+                      {/* Rank badge */}
+                      <div className="shrink-0 w-10 h-10 rounded-full flex items-center justify-center text-white text-[14px] font-bold shadow-lg"
+                        style={{ backgroundColor: RANK_COLORS[i] }}>
+                        #{i + 1}
+                      </div>
+
+                      <div className="flex-1 min-w-0 space-y-2">
+                        {/* Author */}
+                        <div className="flex items-center gap-2">
+                          <span className="text-[12px] font-bold text-foreground/80">{tweet.authorName || tweet.author}</span>
+                          {tweet.authorHandle && <span className="text-[11px] text-muted-foreground/40" dir="ltr">{tweet.authorHandle.startsWith('@') ? tweet.authorHandle : `@${tweet.authorHandle}`}</span>}
+                        </div>
+
+                        {/* Text */}
+                        <p className="text-[13px] leading-relaxed text-foreground/80">{tweet.text}</p>
+
+                        {/* AI analysis */}
+                        {aiAnalysis && (
+                          <div className="p-3 rounded-xl bg-thmanyah-amber/[0.04] border border-thmanyah-amber/10 space-y-1">
+                            <p className="text-[11px] font-bold text-foreground/70">{aiAnalysis.summary}</p>
+                            <p className="text-[10px] font-bold text-thmanyah-amber/70">{aiAnalysis.why_viral}</p>
+                          </div>
+                        )}
+
+                        {/* Engagement metrics */}
+                        <div className="flex items-center gap-4 text-[10px] font-bold text-muted-foreground/50">
+                          <span className="inline-flex items-center gap-1"><HeartIcon className="w-3 h-3" />{formatSmart(tweet.engagement.likes)}</span>
+                          <span className="inline-flex items-center gap-1"><Repeat2 className="w-3 h-3" />{formatSmart(tweet.engagement.retweets)}</span>
+                          <span className="inline-flex items-center gap-1"><MessageSquare className="w-3 h-3" />{formatSmart(tweet.engagement.replies)}</span>
+                          {tweet.views ? <span className="inline-flex items-center gap-1"><Eye className="w-3 h-3" />{formatSmart(tweet.views)}</span> : null}
+                          <span className="inline-flex items-center gap-1 text-thmanyah-amber font-bold">تفاعل: {formatSmart(eng)}</span>
+                          {tweet.url && (
+                            <a href={tweet.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-thmanyah-blue hover:underline mr-auto">
+                              <ExternalLink className="w-3 h-3" />رابط
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+
+          {/* ═══ 4. توزيع المشاعر ═══ */}
+          <section id="sentiment" className="scroll-mt-32 space-y-5">
+            <SectionHeading icon={Heart} color="#E4405F">توزيع المشاعر والعواطف</SectionHeading>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+              <div className="card-stagger rounded-2xl bg-card border border-border/40 p-6">
+                <h3 className="text-[14px] font-display font-bold text-foreground/80 mb-4">توزيع المشاعر</h3>
+                <SentimentPieChart
+                  positive={sentimentCounts.positive}
+                  negative={sentimentCounts.negative}
+                  neutral={sentimentCounts.neutral}
+                  onSliceClick={(sentiment) => setSelectedSentiment(selectedSentiment === sentiment ? null : sentiment)}
+                />
+              </div>
+
+              <div className="card-stagger rounded-2xl bg-card border border-border/40 p-6">
+                <h3 className="text-[14px] font-display font-bold text-foreground/80 mb-4">توزيع العواطف</h3>
+                <div className="space-y-2.5">
+                  {Object.entries(emotionCounts).sort((a, b) => b[1] - a[1]).map(([emotion, count]) => (
+                    <div key={emotion} className="flex items-center gap-3">
+                      <Badge className={`${getEmotionBadge(emotion)} border-0 text-[11px] font-bold min-w-[60px] justify-center`}>{emotion}</Badge>
+                      <Progress value={(count / totalTweets) * 100} className="flex-1 h-2" />
+                      <span className="text-[11px] font-bold text-muted-foreground/50 w-8 text-left">{count}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {selectedSentiment && (
+              <div className="card-stagger rounded-2xl bg-card border border-border/40 overflow-hidden">
+                <div className="flex items-center justify-between px-5 py-4 border-b border-border/30">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-[14px] font-display font-bold text-foreground/80">منشورات &ldquo;{selectedSentiment}&rdquo;</h3>
+                    <Badge className="bg-foreground text-white border-0 text-[10px] font-bold">{sentimentFilteredTweets.length}</Badge>
+                  </div>
+                  <button onClick={() => setSelectedSentiment(null)} className="p-1.5 rounded-lg hover:bg-muted/30 transition-colors">
+                    <X className="w-4 h-4 text-muted-foreground/40" />
+                  </button>
+                </div>
+                <div className="divide-y divide-border/20 max-h-[400px] overflow-y-auto">
+                  {sentimentFilteredTweets.slice(0, 50).map(tweet => (
+                    <div key={tweet.id} className="px-5 py-4 hover:bg-muted/10 transition-colors">
                       <p className="text-[11px] font-bold text-muted-foreground/50">{tweet.author}</p>
                       <p className="text-[13px] mt-1 leading-relaxed text-foreground/80">{tweet.text}</p>
-                      {tweet.engagement && (
-                        <div className="flex gap-3 mt-2 text-[10px] font-bold text-muted-foreground/40">
-                          <span>{formatSmart(tweet.engagement.likes)} إعجاب</span>
-                          <span>{formatSmart(tweet.engagement.retweets)} إعادة</span>
-                          <span>{formatSmart(tweet.engagement.replies)} رد</span>
-                        </div>
-                      )}
+                      <div className="flex gap-3 mt-2 text-[10px] font-bold text-muted-foreground/40">
+                        <span>{formatSmart(tweet.engagement.likes)} إعجاب</span>
+                        <span>{formatSmart(tweet.engagement.retweets)} إعادة</span>
+                        <span>{formatSmart(tweet.reach)} وصول</span>
+                      </div>
                     </div>
-                    <div className="flex flex-col items-end gap-1.5 shrink-0">
-                      <Badge className={`${getSentimentBadge(tweet.sentiment)} border text-[10px] font-bold`}>{tweet.sentiment}</Badge>
-                      <span className="text-[10px] font-bold text-muted-foreground/40">{formatSmart(tweet.reach)} وصول</span>
-                    </div>
-                  </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </section>
-
-      {/* ══════════════════════════════════════════
-          SECTION: Topics
-          ══════════════════════════════════════════ */}
-      <section id="topics" className="scroll-mt-32 space-y-5">
-        <SectionHeading icon={Target} color="#FFBC0A">الكلمات المفتاحية والمواضيع</SectionHeading>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-          {/* Keywords */}
-          <div className="card-stagger rounded-2xl bg-card border border-border/40 p-6" style={{ animationDelay: "0s" }}>
-            <div className="flex items-center gap-2 mb-4">
-              <Target className="w-4 h-4 text-muted-foreground/50" strokeWidth={1.8} />
-              <h3 className="text-[14px] font-display font-bold text-foreground/80">الأكثر تكراراً</h3>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {topKeywords.map(([keyword, count]) => (
-                <span
-                  key={keyword}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-muted/50 border border-border/40 text-[12px] font-bold text-foreground/70"
-                >
-                  {keyword}
-                  <span className="text-muted-foreground/40 nums-en">({count})</span>
-                </span>
-              ))}
-            </div>
-          </div>
-
-          {/* Themes (AI-generated) */}
-          {reportInsights && reportInsights.themes.length > 0 && (
-            <div className="card-stagger rounded-2xl bg-card border border-border/40 p-6" style={{ animationDelay: "0.05s" }}>
-              <div className="flex items-center gap-2 mb-4">
-                <Lightbulb className="w-4 h-4 text-muted-foreground/50" strokeWidth={1.8} />
-                <h3 className="text-[14px] font-display font-bold text-foreground/80">المواضيع الرئيسية</h3>
               </div>
-              <div className="space-y-3">
+            )}
+          </section>
+
+          {/* ═══ 5. المواضيع الرئيسية ═══ */}
+          {reportInsights && reportInsights.themes.length > 0 && (
+            <section id="themes" className="scroll-mt-32 space-y-5">
+              <SectionHeading icon={Target} color="#FFBC0A">المواضيع الرئيسية</SectionHeading>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 {reportInsights.themes.map((theme, i) => {
                   const colors = ["#0072F9", "#00C17A", "#FFBC0A", "#F24935", "#8B5CF6"];
                   const color = colors[i % colors.length];
                   return (
-                    <div key={i} className="p-3 rounded-xl border" style={{ borderColor: `${color}15`, backgroundColor: `${color}04` }}>
-                      <div className="flex items-center justify-between mb-1">
+                    <div key={i} className="card-stagger rounded-2xl bg-card border border-border/40 p-5" style={{ animationDelay: `${i * 0.05}s` }}>
+                      <div className="flex items-center justify-between mb-2">
                         <h4 className="text-[13px] font-bold text-foreground/80">{theme.name}</h4>
-                        <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-bold text-muted-foreground/40">{theme.percentage}%</span>
-                          <Badge className={`text-[9px] font-bold border-0 ${
-                            theme.sentiment === 'إيجابي' ? 'bg-thmanyah-green/10 text-thmanyah-green' :
-                            theme.sentiment === 'سلبي' ? 'bg-thmanyah-red/10 text-thmanyah-red' :
-                            'bg-muted text-muted-foreground'
-                          }`}>{theme.sentiment}</Badge>
-                        </div>
+                        <span className="text-[11px] font-bold" style={{ color }}>{theme.percentage}%</span>
                       </div>
-                      <p className="text-[11px] font-bold text-muted-foreground/50 leading-relaxed">{theme.description}</p>
-                      <div className="mt-2 h-1.5 bg-muted/20 rounded-full overflow-hidden">
+                      <p className="text-[11px] font-bold text-muted-foreground/50 leading-relaxed mb-3">{theme.description}</p>
+                      <div className="h-1.5 bg-muted/20 rounded-full overflow-hidden">
                         <div className="h-full rounded-full" style={{ width: `${theme.percentage}%`, backgroundColor: color }} />
                       </div>
                     </div>
                   );
                 })}
               </div>
-            </div>
+            </section>
           )}
-        </div>
 
-        {/* Topic Categorization */}
-        <TopicCategorization tweets={activeTweets} />
+          {/* ═══ 6. الرؤى والملاحظات ═══ */}
+          {reportInsights && reportInsights.insights.length > 0 && (
+            <section id="insights" className="scroll-mt-32 space-y-5">
+              <SectionHeading icon={Lightbulb} color="#0072F9">الرؤى والملاحظات</SectionHeading>
 
-        {/* Word Cloud */}
-        <div className="space-y-3">
-          <h3 className="text-[14px] font-display font-bold text-foreground/70">سحابة الكلمات</h3>
-          <WordCloud tweets={activeTweets} />
-        </div>
-      </section>
-
-      {/* ══════════════════════════════════════════
-          SECTION: Timeline
-          ══════════════════════════════════════════ */}
-      <section id="timeline" className="scroll-mt-32 space-y-5">
-        <SectionHeading icon={TrendingUp} color="#0072F9">التحليل الزمني</SectionHeading>
-        <p className="text-[11px] font-bold text-muted-foreground/40 -mt-3">اضغط على أي نقطة في الرسم البياني لعرض التغريدات المقابلة</p>
-        <TimelineCharts tweets={activeTweets} />
-      </section>
-
-      {/* ══════════════════════════════════════════
-          SECTION: Issues (AI-generated)
-          ══════════════════════════════════════════ */}
-      {reportInsights && reportInsights.issues.length > 0 && (
-        <section id="issues" className="scroll-mt-32 space-y-5">
-          <SectionHeading icon={AlertTriangle} color="#F24935">المشاكل والقضايا</SectionHeading>
-
-          <div className="space-y-4">
-            {reportInsights.issues.map((issue, i) => {
-              const severityColor = issue.severity === 'high' ? '#F24935' : issue.severity === 'medium' ? '#FFBC0A' : '#6B7280';
-              const severityLabel = issue.severity === 'high' ? 'عالي الخطورة' : issue.severity === 'medium' ? 'متوسط الخطورة' : 'منخفض الخطورة';
-              return (
-                <div
-                  key={i}
-                  className="card-stagger rounded-2xl bg-card border border-border/40 p-5 space-y-3"
-                  style={{ animationDelay: `${i * 0.05}s` }}
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-white text-[11px] font-bold" style={{ backgroundColor: severityColor }}>
-                      {i + 1}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <h4 className="text-[14px] font-bold text-foreground/85 mb-1">{issue.title}</h4>
-                      <p className="text-[12px] font-bold text-muted-foreground/50 leading-relaxed">{issue.description}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 mr-10">
-                    <span className="px-2.5 py-1 rounded-full text-[10px] font-bold text-white" style={{ backgroundColor: severityColor }}>{severityLabel}</span>
-                    {issue.count > 0 && (
-                      <span className="text-[10px] font-bold text-muted-foreground/40">{issue.count} تغريدة</span>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </section>
-      )}
-
-      {/* ══════════════════════════════════════════
-          SECTION: Insights (AI-generated)
-          ══════════════════════════════════════════ */}
-      {reportInsights && reportInsights.insights.length > 0 && (
-        <section id="insights" className="scroll-mt-32 space-y-5">
-          <SectionHeading icon={Lightbulb} color="#0072F9">الرؤى والملاحظات</SectionHeading>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {reportInsights.insights.map((insight, i) => (
-              <div
-                key={i}
-                className="card-stagger card-hover-lift rounded-2xl bg-card border border-border/40 p-5 space-y-3"
-                style={{ animationDelay: `${i * 0.05}s` }}
-              >
-                <div className="flex items-start gap-3">
-                  <div className="shrink-0 p-2 rounded-xl bg-thmanyah-blue/[0.06]">
-                    <Lightbulb className="w-4 h-4 text-thmanyah-blue" strokeWidth={1.8} />
-                  </div>
-                  <div>
-                    <h4 className="text-[13px] font-bold text-foreground/85 mb-1">{insight.title}</h4>
-                    <p className="text-[11px] font-bold text-muted-foreground/50 leading-relaxed">{insight.description}</p>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* ══════════════════════════════════════════
-          SECTION: Recommendations (AI-generated)
-          ══════════════════════════════════════════ */}
-      {reportInsights && reportInsights.recommendations.length > 0 && (
-        <section id="recommendations" className="scroll-mt-32 space-y-5">
-          <SectionHeading icon={CheckCircle} color="#00C17A">التوصيات</SectionHeading>
-
-          <div className="space-y-4">
-            {reportInsights.recommendations.map((rec, i) => (
-              <div
-                key={i}
-                className="card-stagger rounded-2xl bg-card border border-border/40 p-5"
-                style={{ animationDelay: `${i * 0.05}s` }}
-              >
-                <div className="flex items-start gap-3">
-                  <div className="shrink-0 p-2 rounded-xl bg-thmanyah-green/[0.06]">
-                    <CheckCircle className="w-4 h-4 text-thmanyah-green" strokeWidth={1.8} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <h4 className="text-[13px] font-bold text-foreground/85">{rec.title}</h4>
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                        rec.priority === 'high' ? 'bg-thmanyah-red/10 text-thmanyah-red' :
-                        rec.priority === 'medium' ? 'bg-thmanyah-amber/10 text-thmanyah-amber' :
-                        'bg-muted text-muted-foreground'
-                      }`}>
-                        الأولوية: {rec.priority === 'high' ? 'عالية' : rec.priority === 'medium' ? 'متوسطة' : 'منخفضة'}
-                      </span>
-                    </div>
-                    <p className="text-[11px] font-bold text-muted-foreground/50 leading-relaxed">{rec.description}</p>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* ══════════════════════════════════════════
-          SECTION: Summary (AI-generated)
-          ══════════════════════════════════════════ */}
-      {reportInsights && (
-        <section id="summary" className="scroll-mt-32 space-y-5">
-          <SectionHeading icon={FileText} color="#8B5CF6">الملخص العام</SectionHeading>
-
-          <div className="card-stagger rounded-2xl bg-card border border-border/40 p-6 space-y-4" style={{ animationDelay: "0s" }}>
-            <div>
-              <h4 className="text-[13px] font-display font-bold text-foreground/70 mb-2">ملخص التقرير</h4>
-              <p className="text-[13px] font-bold text-foreground/80 leading-relaxed">{reportInsights.overall_summary}</p>
-            </div>
-            <div className="h-px bg-border/40" />
-            <div>
-              <h4 className="text-[13px] font-display font-bold text-foreground/70 mb-2">تحليل المشاعر</h4>
-              <p className="text-[13px] font-bold text-foreground/80 leading-relaxed">{reportInsights.sentiment_analysis}</p>
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* ══════════════════════════════════════════
-          SECTION: All Tweets
-          ══════════════════════════════════════════ */}
-      <section id="tweets" className="scroll-mt-32 space-y-5">
-        <div className="flex items-center gap-2">
-          <SectionHeading icon={MessageSquare} color="#494C6B">جميع التغريدات المحللة</SectionHeading>
-          <Badge className="bg-foreground text-white border-0 text-[10px] font-bold mr-2">{formatSmart(totalTweets)}</Badge>
-        </div>
-
-        {/* Sort controls */}
-        <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-          {([
-            ['newest', 'الأحدث'],
-            ['engagement', 'الأكثر تفاعلاً'],
-            ['reach', 'الأكثر وصولاً'],
-            ['positive', 'إيجابي فقط'],
-            ['negative', 'سلبي فقط'],
-          ] as const).map(([key, label]) => (
-            <button
-              key={key}
-              onClick={() => { setTweetSort(key); setTweetListLimit(30); }}
-              className={`shrink-0 px-3.5 py-2 rounded-xl text-[11px] font-bold transition-all ${
-                tweetSort === key
-                  ? 'bg-foreground text-white'
-                  : 'bg-card border border-border/40 text-muted-foreground/60 hover:text-foreground'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-
-        {(() => {
-          // Sort and filter tweets
-          let sorted = [...activeTweets];
-          switch (tweetSort) {
-            case 'engagement':
-              sorted.sort((a, b) => {
-                const eA = (a.engagement?.likes || 0) + (a.engagement?.retweets || 0) + (a.engagement?.replies || 0);
-                const eB = (b.engagement?.likes || 0) + (b.engagement?.retweets || 0) + (b.engagement?.replies || 0);
-                return eB - eA;
-              });
-              break;
-            case 'reach':
-              sorted.sort((a, b) => b.reach - a.reach);
-              break;
-            case 'positive':
-              sorted = sorted.filter(t => t.sentiment === 'إيجابي');
-              break;
-            case 'negative':
-              sorted = sorted.filter(t => t.sentiment === 'سلبي');
-              break;
-          }
-          const visible = sorted.slice(0, tweetListLimit);
-          const hasMore = tweetListLimit < sorted.length;
-
-          return (
-            <>
-              <div className="space-y-2.5">
-                {visible.map((tweet, i) => {
-                  const isExpanded = expandedTweets.has(tweet.id);
-                  const isLong = tweet.text.length > 200;
-                  const displayText = isLong && !isExpanded ? tweet.text.slice(0, 200) + '...' : tweet.text;
-                  const tweetUrl = tweet.author ? `https://twitter.com/${tweet.author.replace('@', '')}` : null;
-
-                  return (
-                    <div
-                      key={tweet.id}
-                      className="card-stagger rounded-xl bg-card border border-border/30 px-5 py-4 hover:border-thmanyah-green/30 transition-colors"
-                      style={{ animationDelay: `${Math.min(i * 0.02, 0.5)}s` }}
-                    >
-                      {/* Row 1: Author + handle */}
-                      <div className="flex items-center justify-between gap-3 mb-2">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <p className="text-[12px] font-bold text-foreground/80 truncate">{tweet.author}</p>
-                        </div>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {reportInsights.insights.map((insight, i) => (
+                  <div key={i} className="card-stagger card-hover-lift rounded-2xl bg-card border border-border/40 p-5" style={{ animationDelay: `${i * 0.05}s` }}>
+                    <div className="flex items-start gap-3">
+                      <div className="shrink-0 p-2 rounded-xl bg-thmanyah-blue/[0.06]">
+                        <Lightbulb className="w-4 h-4 text-thmanyah-blue" strokeWidth={1.8} />
                       </div>
+                      <div>
+                        <h4 className="text-[13px] font-bold text-foreground/85 mb-1">{insight.title}</h4>
+                        <p className="text-[11px] font-bold text-muted-foreground/50 leading-relaxed">{insight.description}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
 
-                      {/* Row 2: Tweet text */}
-                      <p className="text-[13px] leading-relaxed text-foreground/80 mb-3">
-                        {displayText}
-                        {isLong && !isExpanded && (
-                          <button
-                            onClick={() => setExpandedTweets(prev => new Set(prev).add(tweet.id))}
-                            className="text-thmanyah-blue text-[11px] font-bold mr-1 hover:underline"
-                          >
-                            المزيد...
-                          </button>
-                        )}
-                      </p>
+          {/* ═══ 7. التوصيات ═══ */}
+          {reportInsights && reportInsights.recommendations.length > 0 && (
+            <section id="recommendations" className="scroll-mt-32 space-y-5">
+              <SectionHeading icon={CheckCircle} color="#00C17A">التوصيات</SectionHeading>
 
-                      {/* Row 3: Engagement metrics */}
-                      <div className="flex items-center gap-4 mb-2 text-[10px] font-bold text-muted-foreground/50">
-                        {tweet.engagement && (
-                          <>
+              <div className="space-y-4">
+                {reportInsights.recommendations.map((rec, i) => (
+                  <div key={i} className="card-stagger rounded-2xl bg-card border border-border/40 p-5" style={{ animationDelay: `${i * 0.05}s` }}>
+                    <div className="flex items-start gap-3">
+                      <div className="shrink-0 p-2 rounded-xl bg-thmanyah-green/[0.06]">
+                        <CheckCircle className="w-4 h-4 text-thmanyah-green" strokeWidth={1.8} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h4 className="text-[13px] font-bold text-foreground/85">{rec.title}</h4>
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                            rec.priority === 'high' ? 'bg-thmanyah-red/10 text-thmanyah-red' :
+                            rec.priority === 'medium' ? 'bg-thmanyah-amber/10 text-thmanyah-amber' :
+                            'bg-muted text-muted-foreground'
+                          }`}>
+                            {rec.priority === 'high' ? 'عالية' : rec.priority === 'medium' ? 'متوسطة' : 'منخفضة'}
+                          </span>
+                        </div>
+                        <p className="text-[11px] font-bold text-muted-foreground/50 leading-relaxed">{rec.description}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* ═══ 8. تحليل الحسابات ═══ */}
+          {accountCounts.length > 0 && (
+            <section id="accounts" className="scroll-mt-32 space-y-5">
+              <SectionHeading icon={Building2} color="#0072F9">تحليل الحسابات</SectionHeading>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                {/* Bar chart */}
+                <div className="card-stagger rounded-2xl bg-card border border-border/40 p-6">
+                  <h3 className="text-[14px] font-display font-bold text-foreground/80 mb-4">الذكر حسب الحساب</h3>
+                  <div className="h-[250px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={accountChartData} layout="vertical" margin={{ top: 5, right: 20, left: 80, bottom: 5 }}>
+                        <XAxis type="number" />
+                        <YAxis type="category" dataKey="name" width={75} tick={{ fontSize: 11, fontWeight: 'bold' }} />
+                        <Tooltip content={({ active, payload }) => {
+                          if (active && payload?.length) {
+                            return (
+                              <div className="bg-card p-3 border border-border rounded-xl shadow-lg">
+                                <p className="font-bold text-[12px]">{payload[0].payload.name}</p>
+                                <p className="text-[11px] text-muted-foreground">{formatSmart(payload[0].value as number)} ذكر</p>
+                              </div>
+                            );
+                          }
+                          return null;
+                        }} />
+                        <Bar dataKey="value" radius={[0, 6, 6, 0]}>
+                          {accountChartData.map((entry, index) => (
+                            <Cell key={index} fill={entry.color} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                {/* Account cards */}
+                <div className="space-y-3">
+                  {accountCounts.map(([name, data], i) => {
+                    const total = data.count;
+                    const posPct = total ? Math.round((data.positive / total) * 100) : 0;
+                    const negPct = total ? Math.round((data.negative / total) * 100) : 0;
+                    const aiSummary = reportInsights?.account_analysis?.[name]?.sentiment_summary;
+                    return (
+                      <div key={name} className="card-stagger rounded-xl bg-card border border-border/40 p-4" style={{ animationDelay: `${i * 0.05}s` }}>
+                        <div className="flex items-center justify-between mb-2">
+                          <h4 className="text-[13px] font-bold text-foreground/80">{name}</h4>
+                          <span className="text-[11px] font-bold text-muted-foreground/50">{formatSmart(data.count)} ذكر</span>
+                        </div>
+                        <div className="flex h-1.5 rounded-full overflow-hidden bg-muted/20 mb-2">
+                          <div className="bg-thmanyah-green" style={{ width: `${posPct}%` }} />
+                          <div className="bg-muted-foreground/30" style={{ width: `${100 - posPct - negPct}%` }} />
+                          <div className="bg-thmanyah-red" style={{ width: `${negPct}%` }} />
+                        </div>
+                        <div className="flex gap-3 text-[10px] font-bold text-muted-foreground/40">
+                          <span className="text-thmanyah-green">{posPct}% إيجابي</span>
+                          <span className="text-thmanyah-red">{negPct}% سلبي</span>
+                        </div>
+                        {aiSummary && <p className="text-[10px] font-bold text-muted-foreground/40 mt-2 leading-relaxed">{aiSummary}</p>}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Content type distribution */}
+              {contentTypeCounts.length > 0 && (
+                <div className="card-stagger rounded-2xl bg-card border border-border/40 p-6">
+                  <h3 className="text-[14px] font-display font-bold text-foreground/80 mb-4">نوع المحتوى</h3>
+                  <div className="flex flex-wrap gap-3">
+                    {contentTypeCounts.map(([type, count]) => (
+                      <div key={type} className="px-4 py-2.5 rounded-xl bg-muted/30 border border-border/30">
+                        <span className="text-[12px] font-bold text-foreground/70">{type}</span>
+                        <span className="text-[11px] font-bold text-muted-foreground/40 mr-2">{formatSmart(count)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </section>
+          )}
+
+          {/* ═══ 9. سحابة الكلمات ═══ */}
+          <section id="wordcloud" className="scroll-mt-32 space-y-5">
+            <SectionHeading icon={Target} color="#FF00B7">سحابة الكلمات</SectionHeading>
+            <WordCloud tweets={activeTweets as any} />
+          </section>
+
+          {/* ═══ 10. التوزيع الزمني ═══ */}
+          <section id="timeline" className="scroll-mt-32 space-y-5">
+            <SectionHeading icon={TrendingUp} color="#0072F9">التحليل الزمني</SectionHeading>
+            <TimelineCharts tweets={activeTweets as any} />
+          </section>
+
+          {/* ═══ 11. جميع التغريدات ═══ */}
+          <section id="tweets" className="scroll-mt-32 space-y-5">
+            <div className="flex items-center gap-2">
+              <SectionHeading icon={MessageSquare} color="#494C6B">جميع المنشورات</SectionHeading>
+              <Badge className="bg-foreground text-white border-0 text-[10px] font-bold mr-2">{formatSmart(totalTweets)}</Badge>
+            </div>
+
+            {/* Sort controls */}
+            <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+              {([
+                ['newest', 'الأحدث'],
+                ['engagement', 'الأكثر تفاعلاً'],
+                ['reach', 'الأكثر وصولاً'],
+                ['positive', 'إيجابي فقط'],
+                ['negative', 'سلبي فقط'],
+              ] as const).map(([key, label]) => (
+                <button key={key} onClick={() => { setTweetSort(key); setTweetListLimit(30); }}
+                  className={`shrink-0 px-3.5 py-2 rounded-xl text-[11px] font-bold transition-all ${
+                    tweetSort === key ? 'bg-foreground text-white' : 'bg-card border border-border/40 text-muted-foreground/60 hover:text-foreground'
+                  }`}>
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {(() => {
+              let sorted = [...activeTweets];
+              switch (tweetSort) {
+                case 'engagement':
+                  sorted.sort((a, b) => {
+                    const eA = a.totalEngagement || (a.engagement.likes + a.engagement.retweets + a.engagement.replies);
+                    const eB = b.totalEngagement || (b.engagement.likes + b.engagement.retweets + b.engagement.replies);
+                    return eB - eA;
+                  });
+                  break;
+                case 'reach':
+                  sorted.sort((a, b) => b.reach - a.reach);
+                  break;
+                case 'positive':
+                  sorted = sorted.filter(t => t.sentiment === 'إيجابي');
+                  break;
+                case 'negative':
+                  sorted = sorted.filter(t => t.sentiment === 'سلبي');
+                  break;
+              }
+              const visible = sorted.slice(0, tweetListLimit);
+              const hasMore = tweetListLimit < sorted.length;
+
+              return (
+                <>
+                  <div className="space-y-2.5">
+                    {visible.map((tweet, i) => {
+                      const isExpanded = expandedTweets.has(tweet.id);
+                      const isLong = tweet.text.length > 200;
+                      const displayText = isLong && !isExpanded ? tweet.text.slice(0, 200) + '...' : tweet.text;
+
+                      return (
+                        <div key={tweet.id} className="card-stagger rounded-xl bg-card border border-border/30 px-5 py-4 hover:border-thmanyah-green/30 transition-colors"
+                          style={{ animationDelay: `${Math.min(i * 0.02, 0.5)}s` }}>
+                          <div className="flex items-center gap-2 mb-2">
+                            <p className="text-[12px] font-bold text-foreground/80">{tweet.authorName || tweet.author}</p>
+                            {tweet.authorHandle && <span className="text-[10px] text-muted-foreground/40" dir="ltr">{tweet.authorHandle.startsWith('@') ? tweet.authorHandle : `@${tweet.authorHandle}`}</span>}
+                            {tweet.date && <span className="text-[10px] text-muted-foreground/30 mr-auto">{tweet.date}</span>}
+                          </div>
+
+                          <p className="text-[13px] leading-relaxed text-foreground/80 mb-3">
+                            {displayText}
+                            {isLong && !isExpanded && (
+                              <button onClick={() => setExpandedTweets(prev => new Set(prev).add(tweet.id))}
+                                className="text-thmanyah-blue text-[11px] font-bold mr-1 hover:underline">المزيد...</button>
+                            )}
+                          </p>
+
+                          <div className="flex items-center gap-4 mb-2 text-[10px] font-bold text-muted-foreground/50">
                             <span className="inline-flex items-center gap-1"><HeartIcon className="w-3 h-3" />{formatSmart(tweet.engagement.likes)}</span>
                             <span className="inline-flex items-center gap-1"><MessageSquare className="w-3 h-3" />{formatSmart(tweet.engagement.replies)}</span>
                             <span className="inline-flex items-center gap-1"><Repeat2 className="w-3 h-3" />{formatSmart(tweet.engagement.retweets)}</span>
-                          </>
-                        )}
-                        <span className="inline-flex items-center gap-1"><Eye className="w-3 h-3" />{formatSmart(tweet.reach)}</span>
-                      </div>
+                            <span className="inline-flex items-center gap-1"><Eye className="w-3 h-3" />{formatSmart(tweet.reach)}</span>
+                          </div>
 
-                      {/* Row 4: Badges + link */}
-                      <div className="flex items-center gap-2">
-                        <Badge className={`${getSentimentBadge(tweet.sentiment)} border text-[10px] font-bold`}>{tweet.sentiment}</Badge>
-                        <Badge className={`${getEmotionBadge(tweet.emotion)} border-0 text-[10px] font-bold`}>{tweet.emotion}</Badge>
-                        <div className="flex-1" />
-                        {tweetUrl && (
-                          <a
-                            href={tweetUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-[10px] font-bold text-thmanyah-blue hover:underline"
-                          >
-                            <ExternalLink className="w-3 h-3" />
-                            رابط
-                          </a>
-                        )}
-                      </div>
+                          <div className="flex items-center gap-2">
+                            <Badge className={`${getSentimentBadge(tweet.sentiment)} border text-[10px] font-bold`}>{tweet.sentiment}</Badge>
+                            <Badge className={`${getEmotionBadge(tweet.emotion)} border-0 text-[10px] font-bold`}>{tweet.emotion}</Badge>
+                            <div className="flex-1" />
+                            {tweet.url && (
+                              <a href={tweet.url} target="_blank" rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 text-[10px] font-bold text-thmanyah-blue hover:underline">
+                                <ExternalLink className="w-3 h-3" />رابط
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {hasMore && (
+                    <div className="flex justify-center pt-2">
+                      <button onClick={() => setTweetListLimit(prev => prev + 30)}
+                        className="inline-flex items-center gap-1.5 px-6 py-2.5 rounded-xl bg-muted/40 border border-border/30 text-[12px] font-bold text-muted-foreground/60 hover:text-foreground hover:border-border transition-all">
+                        <ChevronDown className="w-3.5 h-3.5" />
+                        عرض المزيد ({formatSmart(sorted.length - tweetListLimit)} متبقية)
+                      </button>
                     </div>
-                  );
-                })}
-              </div>
-
-              {hasMore && (
-                <div className="flex justify-center pt-2">
-                  <button
-                    onClick={() => setTweetListLimit(prev => prev + 30)}
-                    className="inline-flex items-center gap-1.5 px-6 py-2.5 rounded-xl bg-muted/40 border border-border/30 text-[12px] font-bold text-muted-foreground/60 hover:text-foreground hover:border-border transition-all"
-                  >
-                    <ChevronDown className="w-3.5 h-3.5" />
-                    عرض المزيد ({formatSmart(sorted.length - tweetListLimit)} متبقية)
-                  </button>
-                </div>
-              )}
-            </>
-          );
-        })()}
-      </section>
+                  )}
+                </>
+              );
+            })()}
+          </section>
+        </>
+      )}
 
       {/* ── Back to top ── */}
-      <div className="flex justify-center pb-4">
-        <button
-          onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-muted/40 border border-border/30 text-[11px] font-bold text-muted-foreground/50 hover:text-foreground hover:border-border transition-all"
-        >
-          <ChevronUp className="w-3.5 h-3.5" />
-          العودة للأعلى
-        </button>
-      </div>
+      {activeTweets.length > 0 && (
+        <div className="flex justify-center pb-4">
+          <button onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-muted/40 border border-border/30 text-[11px] font-bold text-muted-foreground/50 hover:text-foreground hover:border-border transition-all">
+            <ChevronUp className="w-3.5 h-3.5" />
+            العودة للأعلى
+          </button>
+        </div>
+      )}
     </div>
   );
 };
@@ -1155,23 +1192,10 @@ function SectionHeading({ icon: Icon, color, children }: { icon: React.ElementTy
 
 function KpiCard({ label, value, sub, color, delay }: { label: string; value: string; sub: string; color: string; delay: number }) {
   return (
-    <div
-      className="card-stagger card-hover-lift rounded-2xl bg-card border border-border/40 p-5"
-      style={{ animationDelay: `${delay * 0.06}s` }}
-    >
+    <div className="card-stagger card-hover-lift rounded-2xl bg-card border border-border/40 p-5" style={{ animationDelay: `${delay * 0.06}s` }}>
       <p className="text-[11px] font-bold mb-2" style={{ color: `${color}99` }}>{label}</p>
-      <p className="text-2xl font-bold nums-en mb-1" style={{ color }}>{value}</p>
-      <p className="text-[10px] font-bold text-muted-foreground/40 nums-en">{sub}</p>
+      <p className="text-2xl font-bold mb-1" style={{ color }}>{value}</p>
+      <p className="text-[10px] font-bold text-muted-foreground/40">{sub}</p>
     </div>
   );
 }
-
-function MiniStat({ value, label, color }: { value: string; label: string; color: string }) {
-  return (
-    <div>
-      <p className="text-xl font-bold nums-en" style={{ color }}>{value}</p>
-      <p className="text-[10px] font-bold text-muted-foreground/50">{label}</p>
-    </div>
-  );
-}
-
